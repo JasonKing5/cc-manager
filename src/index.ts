@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 
+import { createRequire } from "node:module";
 import { Command } from "commander";
 import { loginCommand } from "./commands/login.js";
 import { modelCommand } from "./commands/model.js";
 import { usageCommand } from "./commands/usage.js";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json") as { version: string };
 
 const program = new Command();
 
 program
   .name("ccm")
   .description("CLI tool to configure claude-code for Bedrock/LiteLLM services")
-  .version("1.0.0");
+  .version(pkg.version);
 
 program
   .command("login")

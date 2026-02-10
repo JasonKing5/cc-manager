@@ -1,3 +1,4 @@
+import readline from "node:readline";
 import { select, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readSettings, writeSettings } from "../lib/settings.js";
@@ -28,13 +29,20 @@ export async function modelCommand(): Promise<void> {
     return item;
   });
 
+  const controller = new AbortController();
+  readline.emitKeypressEvents(process.stdin);
+  const onKeypress = (_str: string, key: { name: string }) => {
+    if (key?.name === "escape") {
+      controller.abort();
+    }
+  };
+  process.stdin.on("keypress", onKeypress);
+
   try {
-    const chosen = await select({
-      message: "Select a model:",
-      choices,
-      pageSize: 15,
-      default: currentModel,
-    });
+    const chosen = await select(
+      { message: "Select a model:", choices, pageSize: 15, default: currentModel },
+      { signal: controller.signal },
+    );
 
     settings.env.ANTHROPIC_MODEL = chosen;
     await writeSettings(settings);
@@ -43,11 +51,15 @@ export async function modelCommand(): Promise<void> {
   } catch (err) {
     if (
       err instanceof Error &&
-      (err.name === "ExitPromptError" || err.name === "CancelPromptError")
+      (err.name === "ExitPromptError" ||
+        err.name === "CancelPromptError" ||
+        err.name === "AbortPromptError")
     ) {
       console.log(chalk.dim("Model selection cancelled."));
       return;
     }
     throw err;
+  } finally {
+    process.stdin.removeListener("keypress", onKeypress);
   }
 }
