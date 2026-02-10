@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-cc-manager (`ccm`) is a Node.js CLI tool that configures `claude-code` to connect to Bedrock/LiteLLM proxy services. It manages `~/.claude/settings.json` with three commands: `login` (API key setup), `model` (interactive model selection), `usage` (balance/quota query via LiteLLM API).
+`@codefe/cc-manager` (`ccm`) is a Node.js CLI tool that configures `claude-code` to connect to Bedrock/LiteLLM proxy services. It manages `~/.claude/settings.json` with three commands: `login` (API key setup), `model` (interactive model selection), `usage` (balance/quota query via LiteLLM API).
 
 ## Build & Run
 

@@ -7,9 +7,9 @@ Manage API keys, switch models interactively, and check usage quota — all from
 ## Install
 
 ```bash
-npm install -g cc-manager
+npm install -g @codefe/cc-manager
 # or
-pnpm add -g cc-manager
+pnpm add -g @codefe/cc-manager
 ```
 
 Requires **Node.js >= 18**.

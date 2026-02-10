@@ -1,5 +1,5 @@
 {
-  "name": "cc-manager",
+  "name": "@codefe/cc-manager",
   "version": "0.0.1",
   "description": "CLI tool to configure claude-code for Bedrock/LiteLLM services",
   "type": "module",
@@ -38,6 +38,9 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "prepublishOnly": "pnpm build"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "commander": "^13.1.0",
