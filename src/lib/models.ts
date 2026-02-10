@@ -1,4 +1,5 @@
 import { Separator } from "@inquirer/prompts";
+import chalk from "chalk";
 
 interface ModelChoice {
   name: string;
@@ -6,7 +7,7 @@ interface ModelChoice {
 }
 
 export const MODEL_CHOICES: (ModelChoice | Separator)[] = [
-  new Separator("── Anthropic (Claude) ──"),
+  new Separator(chalk.bold("─────── Anthropic (Claude) ───────")),
   {
     name: "Claude Opus 4.6 (Preview)   us.anthropic.claude-opus-4-6-v1",
     value: "us.anthropic.claude-opus-4-6-v1",
@@ -52,7 +53,7 @@ export const MODEL_CHOICES: (ModelChoice | Separator)[] = [
     value: "us.anthropic.claude-3-haiku-20240307-v1:0",
   },
 
-  new Separator("── OpenAI (GPT) ──"),
+  new Separator(chalk.bold("─────── OpenAI (GPT) ───────")),
   {
     name: "GPT-5.2 (Flagship)           gpt-5.2",
     value: "gpt-5.2",
@@ -82,7 +83,7 @@ export const MODEL_CHOICES: (ModelChoice | Separator)[] = [
     value: "o4-mini",
   },
 
-  new Separator("── Google (Gemini) ──"),
+  new Separator(chalk.bold("─────── Google (Gemini) ───────")),
   {
     name: "Gemini 3 Pro (Preview)       gemini/gemini-3-pro-preview",
     value: "gemini/gemini-3-pro-preview",
@@ -100,7 +101,7 @@ export const MODEL_CHOICES: (ModelChoice | Separator)[] = [
     value: "gemini/gemini-2.0-flash-lite",
   },
 
-  new Separator("── Amazon & Others ──"),
+  new Separator(chalk.bold("─────── Amazon & Others ───────")),
   {
     name: "Amazon Nova Pro              us.amazon.nova-pro-v1:0",
     value: "us.amazon.nova-pro-v1:0",
