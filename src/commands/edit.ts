@@ -1,8 +1,9 @@
-import { input, password, select, checkbox, confirm } from "@inquirer/prompts";
+import { input, password, select, checkbox } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
 import { buildCheckboxChoices } from "../lib/models.js";
+import { styledConfirm } from "../lib/prompts.js";
 
 export async function editCommand(name?: string): Promise<void> {
   const store = await readStore();
@@ -123,7 +124,7 @@ export async function editCommand(name?: string): Promise<void> {
         }
 
         // Custom models
-        const addCustom = await confirm({ message: "Add custom models?", default: false });
+        const addCustom = await styledConfirm("Add custom models?", false);
         if (addCustom) {
           let more = true;
           while (more) {
@@ -132,7 +133,7 @@ export async function editCommand(name?: string): Promise<void> {
             const label = await input({ message: "Display name:", default: value.trim() });
             provider.models.push({ name: label.trim(), value: value.trim() });
             added++;
-            more = await confirm({ message: "Add another?", default: false });
+            more = await styledConfirm("Add another?", false);
           }
         }
 

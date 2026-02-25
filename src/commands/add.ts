@@ -1,8 +1,9 @@
-import { input, password, checkbox, select, confirm } from "@inquirer/prompts";
+import { input, password, checkbox, select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
 import { buildCheckboxChoices } from "../lib/models.js";
+import { styledConfirm } from "../lib/prompts.js";
 
 export async function addCommand(): Promise<void> {
   const store = await readStore();
@@ -64,10 +65,7 @@ export async function addCommand(): Promise<void> {
     });
 
     // Ask if user wants to add custom models
-    const addCustom = await confirm({
-      message: "Add custom models?",
-      default: false,
-    });
+    const addCustom = await styledConfirm("Add custom models?", false);
 
     if (addCustom) {
       models.push(...(await promptCustomModels()));
@@ -113,10 +111,7 @@ export async function addCommand(): Promise<void> {
   };
 
   // 6. Activate?
-  const shouldActivate = await confirm({
-    message: "Activate this configuration now?",
-    default: true,
-  });
+  const shouldActivate = await styledConfirm("Activate this configuration now?");
 
   if (shouldActivate) {
     store.active = trimmedName;
@@ -141,7 +136,7 @@ async function promptCustomModels(): Promise<{ name: string; value: string }[]> 
       default: value.trim(),
     });
     models.push({ name: label.trim(), value: value.trim() });
-    more = await confirm({ message: "Add another?", default: false });
+    more = await styledConfirm("Add another?", false);
   }
   return models;
 }

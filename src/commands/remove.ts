@@ -1,6 +1,7 @@
-import { select, confirm } from "@inquirer/prompts";
+import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, clearSettings } from "../lib/store.js";
+import { styledConfirm } from "../lib/prompts.js";
 
 export async function removeCommand(name?: string): Promise<void> {
   const store = await readStore();
@@ -28,10 +29,7 @@ export async function removeCommand(name?: string): Promise<void> {
     process.exit(1);
   }
 
-  const yes = await confirm({
-    message: `Remove "${target}"?`,
-    default: false,
-  });
+  const yes = await styledConfirm(`Remove "${target}"?`, false);
 
   if (!yes) {
     console.log(chalk.dim("Cancelled."));
