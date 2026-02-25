@@ -1,33 +1,38 @@
 import readline from "node:readline";
-import { select, Separator } from "@inquirer/prompts";
+import { select } from "@inquirer/prompts";
 import chalk from "chalk";
-import { readSettings, writeSettings } from "../lib/settings.js";
-import { MODEL_CHOICES } from "../lib/models.js";
+import { readStore, writeStore, applyToSettings } from "../lib/store.js";
+import { buildSelectChoices } from "../lib/models.js";
 
 export async function modelCommand(): Promise<void> {
-  const settings = await readSettings();
+  const store = await readStore();
 
-  if (!settings.env?.ANTHROPIC_AUTH_TOKEN) {
+  if (!store.active || !store.providers[store.active]) {
     console.log(
       chalk.yellow(
-        "No API Key found. Please run `ccm login` first to configure your credentials.",
+        "No active configuration. Run `ccm add` to create one, or `ccm use` to activate one.",
       ),
     );
     process.exit(1);
   }
 
-  const currentModel = settings.env?.ANTHROPIC_MODEL;
+  const provider = store.providers[store.active];
+
+  if (provider.models.length === 0) {
+    console.log(
+      chalk.yellow(
+        `Configuration "${store.active}" has no models. Run \`ccm edit\` to add models.`,
+      ),
+    );
+    process.exit(1);
+  }
+
+  const currentModel = provider.env.ANTHROPIC_MODEL;
   if (currentModel) {
     console.log(chalk.dim(`Current model: ${currentModel}`));
   }
 
-  const choices = MODEL_CHOICES.map((item) => {
-    if (item instanceof Separator) return item;
-    if (item.value === currentModel) {
-      return { ...item, name: `${item.name} ${chalk.cyan("(current)")}` };
-    }
-    return item;
-  });
+  const choices = buildSelectChoices(provider.models, currentModel);
 
   const controller = new AbortController();
   readline.emitKeypressEvents(process.stdin);
@@ -40,14 +45,23 @@ export async function modelCommand(): Promise<void> {
 
   try {
     const chosen = await select(
-      { message: "Select a model:", choices, pageSize: 15, default: currentModel },
+      {
+        message: `Select a model (${store.active}):`,
+        choices,
+        pageSize: 15,
+        default: currentModel,
+      },
       { signal: controller.signal },
     );
 
-    settings.env.ANTHROPIC_MODEL = chosen;
-    await writeSettings(settings);
+    // Update store
+    provider.env.ANTHROPIC_MODEL = chosen;
+    await writeStore(store);
 
-    console.log(chalk.green(`✅ Model switched to ${chalk.bold(chosen)}`));
+    // Update settings.json (clears stale keys first)
+    await applyToSettings(provider.env);
+
+    console.log(chalk.green(`Model switched to ${chalk.bold(chosen)}`));
   } catch (err) {
     if (
       err instanceof Error &&

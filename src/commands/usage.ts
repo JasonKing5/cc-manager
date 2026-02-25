@@ -1,22 +1,38 @@
 import chalk from "chalk";
 import { readSettings } from "../lib/settings.js";
+import { readStore } from "../lib/store.js";
 
 export async function usageCommand(): Promise<void> {
-  const settings = await readSettings();
-  const token = settings.env?.ANTHROPIC_AUTH_TOKEN;
+  const store = await readStore();
+  let token: string | undefined;
+  let baseUrl: string | undefined;
+
+  // Try active provider first, fall back to settings.json
+  if (store.active && store.providers[store.active]) {
+    const provider = store.providers[store.active];
+    token = provider.env.ANTHROPIC_AUTH_TOKEN;
+    baseUrl = provider.env.ANTHROPIC_BEDROCK_BASE_URL;
+  } else {
+    const settings = await readSettings();
+    token = settings.env?.ANTHROPIC_AUTH_TOKEN;
+    baseUrl = settings.env?.ANTHROPIC_BEDROCK_BASE_URL;
+  }
 
   if (!token) {
     console.log(
       chalk.yellow(
-        "No API Key found. Please run `ccm login` first to configure your credentials.",
+        "No API Key found. Run `ccm add` to create a configuration.",
       ),
     );
     process.exit(1);
   }
 
+  // Derive API base from proxy URL (strip /bedrock suffix)
+  const apiBase = baseUrl?.replace(/\/bedrock\/?$/, "") ?? "https://www.litellm.org";
+
   let data: any;
   try {
-    const res = await fetch("http://www.litellm.org/key/info", {
+    const res = await fetch(`${apiBase}/key/info`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -50,6 +66,9 @@ export async function usageCommand(): Promise<void> {
   console.log("");
   console.log(chalk.bold("  Usage Summary"));
   console.log(chalk.dim("  ─────────────────────────────"));
+  if (store.active) {
+    console.log(`  Config:    ${chalk.cyan(store.active)}`);
+  }
   console.log(`  Alias:      ${chalk.cyan(alias)}`);
   console.log(`  Spent:      ${chalk.yellow(`$${spent.toFixed(2)}`)}`);
   console.log(`  Budget:     ${chalk.green(budgetStr)}`);
