@@ -2,7 +2,7 @@
 
 A lightweight CLI tool to configure [claude-code](https://docs.anthropic.com/en/docs/claude-code) for Bedrock/LiteLLM proxy services.
 
-Manage API keys, switch models interactively, and check usage quota — all from a single command.
+Manage multiple provider configurations — each with its own API key, proxy URL, and model list — and switch between them instantly.
 
 ## Install
 
@@ -17,10 +17,10 @@ Requires **Node.js >= 18**.
 ## Quick Start
 
 ```bash
-# 1. Configure your API key
-ccm login
+# 1. Create a provider configuration
+ccm add
 
-# 2. Pick a model
+# 2. Pick a model from the active configuration
 ccm model
 
 # 3. Check your balance
@@ -29,62 +29,112 @@ ccm usage
 
 ## Commands
 
-### `ccm login`
+### `ccm add`
 
-Set up your API key and initialize the environment variables needed by `claude-code`.
+Interactively create a new named provider configuration.
 
 ```
-$ ccm login
-? Please enter your API Key (sk-...): ****
-✅ Configuration saved to ~/.claude/settings.json
+$ ccm add
+? Configuration name: personal-litellm
+? Proxy Base URL: https://www.litellm.org/bedrock
+? API Key (sk-...): ****
+? AWS Region (leave empty to skip): us-west-2
+? How do you want to configure models? Select from built-in list
+? Select models (space to toggle, enter to confirm):
+  ...
+? Activate this configuration now? Yes
+Configuration "personal-litellm" created and activated.
 ```
 
-This writes the following defaults into `~/.claude/settings.json` under the `env` key (existing fields are preserved):
+### `ccm list`
 
-| Variable | Default |
-| --- | --- |
-| `CLAUDE_CODE_USE_BEDROCK` | `1` |
-| `CLAUDE_CODE_SKIP_BEDROCK_AUTH` | `1` |
-| `ANTHROPIC_MODEL` | `us.anthropic.claude-opus-4-6-v1` |
-| `ANTHROPIC_AUTH_TOKEN` | *(your key)* |
-| `ANTHROPIC_BEDROCK_BASE_URL` | `https://www.litellm.org/bedrock` |
-| `AWS_REGION` | `us-west-2` |
+List all saved configurations with their details. Alias: `ccm ls`.
+
+```
+$ ccm list
+
+  Configurations
+  ─────────────────────────────
+  ● personal-litellm (active)
+    URL:    https://www.litellm.org/bedrock
+    Region: us-west-2
+    Models: 3
+    Active: us.anthropic.claude-opus-4-6-v1
+
+  ○ company-deepseek
+    URL:    https://company-proxy.example.com/bedrock
+    Region: us-east-1
+    Models: 2
+```
+
+### `ccm use [name]`
+
+Switch the active configuration. Without a name, shows an interactive selector.
+
+```
+$ ccm use company-deepseek
+Switched to "company-deepseek".
+Settings written to ~/.claude/settings.json
+```
+
+Switching clears all ccm-managed env keys from `settings.json` before writing the new provider's values, preventing stale keys from leaking between configurations.
+
+### `ccm edit [name]`
+
+Edit a configuration interactively. Without a name, edits the active configuration.
+
+```
+$ ccm edit
+Editing active configuration: personal-litellm
+? Editing "personal-litellm" — what do you want to change?
+> Name
+  Base URL
+  API Key
+  Region
+  Add models
+  Remove models
+  Done
+```
+
+Changes to the active configuration are automatically synced to `settings.json`.
+
+### `ccm remove [name]`
+
+Remove a configuration. Alias: `ccm rm`. Without a name, shows an interactive selector.
+
+```
+$ ccm remove company-deepseek
+? Remove "company-deepseek"? Yes
+Configuration "company-deepseek" removed.
+```
+
+If the active configuration is removed, its env keys are cleaned up from `settings.json`.
 
 ### `ccm model`
 
-Interactively browse and select a model, grouped by vendor.
+Select a model from the active configuration's model list.
 
 ```
 $ ccm model
 Current model: us.anthropic.claude-opus-4-6-v1
-? Select a model:
-── Anthropic (Claude) ──
-❯ Claude Opus 4.6 (Preview)   us.anthropic.claude-opus-4-6-v1
-  Claude Opus 4.5 (Preview)   us.anthropic.claude-opus-4-5-20251101-v1:0
-  Claude Sonnet 4.5 (Preview) us.anthropic.claude-sonnet-4-5-20250929-v1:0
-  ...
-── OpenAI (GPT) ──
-  GPT-5.2 (Flagship)          gpt-5.2
-  ...
-── Google (Gemini) ──
-  Gemini 2.5 Pro               gemini/gemini-2.5-pro
-  ...
-── Amazon & Others ──
-  Amazon Nova Pro              us.amazon.nova-pro-v1:0
-  ...
+? Select a model (personal-litellm):
+  Claude Opus 4.6 (Preview)      us.anthropic.claude-opus-4-6-v1 (current)
+  Claude Sonnet 4                 us.anthropic.claude-sonnet-4-20250514-v1:0
+  GPT-5.2                         gpt-5.2
 ```
 
-Only the `ANTHROPIC_MODEL` value in `settings.json` is updated — all other fields remain untouched.
+Updates both `ccm.json` and `settings.json`.
 
 ### `ccm usage`
 
-Query your current API key's spending, budget, and expiration date via the LiteLLM API.
+Query your current API key's spending, budget, and expiration date.
 
 ```
 $ ccm usage
 
   Usage Summary
   ─────────────────────────────
+  Config:    personal-litellm
   Alias:      my-key
   Spent:      $5.02
   Budget:     $1000.00
@@ -92,10 +142,12 @@ $ ccm usage
   Expires:    2025-12-31 23:59:59
 ```
 
-## Supported Models
+## Built-in Models
+
+When adding or editing a configuration, you can select from 42+ built-in models across 5 vendor groups, or add custom model IDs.
 
 <details>
-<summary>Full model list (24 models)</summary>
+<summary>Full built-in model list</summary>
 
 **Anthropic (Claude)**
 
@@ -103,7 +155,10 @@ $ ccm usage
 | --- | --- |
 | Claude Opus 4.6 (Preview) | `us.anthropic.claude-opus-4-6-v1` |
 | Claude Opus 4.5 (Preview) | `us.anthropic.claude-opus-4-5-20251101-v1:0` |
+| Claude Opus 4.1 | `us.anthropic.claude-opus-4-1-20250805-v1:0` |
+| Claude Opus 4 | `us.anthropic.claude-opus-4-20250514-v1:0` |
 | Claude Sonnet 4.5 (Preview) | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| Claude Sonnet 4 | `us.anthropic.claude-sonnet-4-20250514-v1:0` |
 | Claude Haiku 4.5 (Preview) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
 | Claude 3.7 Sonnet | `us.anthropic.claude-3-7-sonnet-20250219-v1:0` |
 | Claude 3.5 Sonnet (v2) | `us.anthropic.claude-3-5-sonnet-20241022-v2:0` |
@@ -118,10 +173,18 @@ $ ccm usage
 | Display Name | Model ID |
 | --- | --- |
 | GPT-5.2 (Flagship) | `gpt-5.2` |
+| GPT-5.2 Codex | `gpt-5.2-codex` |
+| GPT-5.1 | `gpt-5.1` |
+| GPT-5.1 Chat | `gpt-5.1-chat` |
+| GPT-5.1 Codex | `gpt-5.1-codex` |
 | GPT-5.1 Codex Max | `gpt-5.1-codex-max` |
 | GPT-5.1 Codex Mini | `gpt-5.1-codex-mini` |
+| GPT-5 | `gpt-5` |
 | GPT-5 Pro | `gpt-5-pro` |
 | GPT-5 Chat | `gpt-5-chat` |
+| GPT-5 Codex | `gpt-5-codex` |
+| GPT-5 Mini | `gpt-5-mini` |
+| GPT-5 Nano | `gpt-5-nano` |
 | GPT-4o | `gpt-4o` |
 | o4 Mini | `o4-mini` |
 
@@ -131,7 +194,9 @@ $ ccm usage
 | --- | --- |
 | Gemini 3 Pro (Preview) | `gemini/gemini-3-pro-preview` |
 | Gemini 2.5 Pro | `gemini/gemini-2.5-pro` |
+| Gemini 2.5 Flash | `gemini/gemini-2.5-flash` |
 | Gemini 2.0 Flash | `gemini/gemini-2.0-flash` |
+| Gemini 2.0 Flash 001 | `gemini/gemini-2.0-flash-001` |
 | Gemini 2.0 Flash Lite | `gemini/gemini-2.0-flash-lite` |
 
 **Amazon & Others**
@@ -139,15 +204,28 @@ $ ccm usage
 | Display Name | Model ID |
 | --- | --- |
 | Amazon Nova Pro | `us.amazon.nova-pro-v1:0` |
+| Amazon Nova 2 Lite | `us.amazon.nova-2-lite-v1:0` |
 | Writer Palmyra X4 | `us.writer.palmyra-x4-v1:0` |
+| Veo 3.1 (Preview) | `vertex_ai/veo-3.1-generate-preview` |
+
+**Embeddings**
+
+| Display Name | Model ID |
+| --- | --- |
+| Text Embedding Ada 002 | `text-embedding-ada-002` |
+| Text Embedding 3 Small | `text-embedding-3-small` |
+| Text Embedding 3 Large | `text-embedding-3-large` |
 
 </details>
 
 ## How It Works
 
-`ccm` reads and writes `~/.claude/settings.json`, the configuration file used by `claude-code`. It only modifies the `env` object within that file and preserves all other fields.
+`ccm` manages two files:
 
-The `usage` command calls the LiteLLM `/key/info` API endpoint using the stored `ANTHROPIC_AUTH_TOKEN`.
+- **`~/.claude/ccm.json`** — stores all named provider configurations (name, env vars, model list) and which one is active
+- **`~/.claude/settings.json`** — the configuration file used by `claude-code`; ccm only modifies the `env` object and preserves all other fields
+
+When you switch configurations with `ccm use`, ccm first clears all its managed env keys (`CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BEDROCK_BASE_URL`, `AWS_REGION`, `ANTHROPIC_MODEL`) from `settings.json`, then writes the new provider's values. This prevents stale keys from leaking between configurations.
 
 ## License
 

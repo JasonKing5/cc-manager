@@ -1,138 +1,177 @@
-这是一个非常实用的工具构想，旨在简化通过 LiteLLM/Bedrock 中转服务使用 `claude-code` 的配置流程。
-
-以下是为您生成的详细产品需求文档（PRD），以及推荐的 npm 包名称。
-
----
-
 # 产品需求文档 (PRD): Claude Code Configuration Manager
 
 ## 1. 产品概述
+
 **产品名称**：cc-manager
-**版本**：1.0.0
-**描述**：一个轻量级的 Node.js CLI 工具，旨在帮助开发者快速配置 `claude-code` 的本地环境，使其能够顺利连接到第三方 Bedrock/LiteLLM 中转服务。它提供了便捷的登录鉴权、可视化的模型切换以及实时的额度查询功能。
+**版本**：0.1.0
+**描述**：一个轻量级的 Node.js CLI 工具，帮助开发者管理多套 `claude-code` 代理服务配置。支持在不同的 API Key、代理地址（LiteLLM、OpenRouter、智谱、DeepSeek 等）和模型列表之间快速切换，实现多场景（个人/公司/不同代理）的无缝管理。
 
 ## 2. 核心功能需求
 
-### 2.1 初始化与登录 (`login`)
-用户首次使用时，通过此命令配置连接所需的 API Key 和基础环境变量。
+### 2.1 添加配置 (`add`)
 
-*   **触发指令**：`cc-manager login` (或 `ccm login`)
+通过交互式流程创建一套命名的代理服务配置。
+
+*   **触发指令**：`ccm add`
 *   **交互流程**：
-    1.  终端提示：`Please enter your API Key (sk-...):`
-    2.  用户输入 Key（输入内容应脱敏显示或掩码）。
-    3.  工具读取 `~/.claude/settings.json`（如果文件不存在则创建）。
-    4.  **写入/更新逻辑**：保留文件中原有的所有其它字段，更新或覆盖 `env` 字段为以下默认值：
-        ```json
-        {
-          "env": {
-            "CLAUDE_CODE_USE_BEDROCK": "1",
-            "CLAUDE_CODE_SKIP_BEDROCK_AUTH": "1",
-            "ANTHROPIC_MODEL": "us.anthropic.claude-opus-4-6-v1",
-            "ANTHROPIC_AUTH_TOKEN": "<用户输入的Key>",
-            "ANTHROPIC_BEDROCK_BASE_URL": "https://www.litellm.org/bedrock",
-            "AWS_REGION": "us-west-2"
-          }
-        }
-        ```
-    5.  提示：`✅ Configuration saved to ~/.claude/settings.json`
+    1.  输入配置名称（校验非空、不重复）
+    2.  输入代理 Base URL（默认 `https://www.litellm.org/bedrock`）
+    3.  输入 API Key（掩码输入）
+    4.  输入 AWS Region（默认 `us-west-2`，可留空跳过）
+    5.  选择模型配置方式：
+        *   **方式一**：从内置模型列表多选（checkbox，按厂商分组），之后可逐个追加自定义模型
+        *   **方式二**：批量输入模型 ID（逗号分隔）
+    6.  确认是否立即激活此配置（默认 yes）
+    7.  若激活 → 写入 `~/.claude/settings.json`
 
-### 2.2 模型切换 (`model`)·
-提供一个交互式的终端界面（TUI），允许用户按厂商分组浏览并选择模型，修改配置文件中的 `ANTHROPIC_MODEL`。
+### 2.2 列出配置 (`list`)
 
-*   **触发指令**：`cc-manager model`
-*   **交互界面**：
-    *   使用 `inquirer` 或 `prompts` 库实现列表选择。
-    *   支持键盘上下键移动，回车确认。
-    *   **显示格式**：`[厂商] 易读简称 (全名)`
-*   **模型数据映射表**：
-    需将原始 Model ID 映射为易读格式，并按厂商分组（Anthropic, OpenAI, Google, Amazon, Other）。
+以格式化列表展示所有已保存的配置，标记当前激活项。
 
-    *(详细映射逻辑见附录 4.1)*
+*   **触发指令**：`ccm list`（别名 `ccm ls`）
+*   **输出格式**：
+    ```
+      Configurations
+      ─────────────────────────────
+      ● personal-litellm (active)
+        URL:    https://www.litellm.org/bedrock
+        Region: us-west-2
+        Models: 3
+        Active: us.anthropic.claude-opus-4-6-v1
 
-*   **执行逻辑**：
-    用户选择后，仅更新 `settings.json` 中 `env.ANTHROPIC_MODEL` 的值，并提示切换成功。
+      ○ company-deepseek
+        URL:    https://company-proxy.example.com/bedrock
+        Region: us-east-1
+        Models: 2
+    ```
 
-### 2.3 用量查询 (`usage`)
-调用 LiteLLM API 查询当前 Key 的余额、消耗及有效期。
+### 2.3 切换配置 (`use`)
 
-*   **触发指令**：`cc-manager usage`
-*   **前置条件**：需先运行 `login` 或确保配置文件中有 `ANTHROPIC_AUTH_TOKEN`。
-*   **API 调用**：
-    *   **URL**: `http://www.litellm.org/key/info?`
-    *   **Method**: `GET`
-    *   **Headers**: `Authorization: Bearer <ANTHROPIC_AUTH_TOKEN>`
-*   **显示内容（精简优化版）**：
-    需计算并展示以下字段：
-    *   **用户别名 (Alias)**: `info.key_alias`
-    *   **当前消耗 (Spent)**: `$5.02` (保留两位小数)
-    *   **总预算 (Budget)**: `$1000.00` (如果 `max_budget` 为 null，显示 "Unlimited")
-    *   **剩余额度 (Remaining)**: `Budget - Spent`
-    *   **过期时间 (Expires)**: 格式化为 `YYYY-MM-DD HH:mm:ss` (转换 `info.expires`)
+激活指定配置，将其 env 写入 `settings.json`。
 
-## 3. 技术规范
+*   **触发指令**：`ccm use [name]`
+*   **行为**：
+    *   有参数：直接切换到指定配置
+    *   无参数：交互式 select 列表选择
+*   **切换逻辑**：
+    1.  清除 `settings.json` 中所有 ccm 管理的 env key
+    2.  写入目标配置的 env
+    3.  更新 `ccm.json` 的 active 字段
 
-*   **开发语言**：TypeScript / JavaScript (Node.js)
-*   **核心依赖库**：
-    *   `commander` 或 `yargs`: 命令行参数解析。
-    *   `inquirer` 或 `@inquirer/prompts`: 交互式选择列表。
-    *   `chalk`: 终端彩色输出。
-    *   `axios` 或 `node-fetch`: API 请求。
-    *   `conf` 或直接使用 `fs`: 文件读写。
-*   **配置文件路径**：`os.homedir() + '/.claude/settings.json'`
+### 2.4 编辑配置 (`edit`)
 
-## 4. 附录：数据字典
+通过交互菜单修改已有配置的各项属性。
 
-### 4.1 模型分组与显示映射
+*   **触发指令**：`ccm edit [name]`
+*   **行为**：无参数时编辑当前激活配置
+*   **交互菜单**：
+    *   Name — 重命名
+    *   Base URL — 修改代理地址
+    *   API Key — 修改密钥（显示掩码后的当前值）
+    *   Region — 修改或清除区域
+    *   Add models — 从内置列表多选 + 追加自定义模型
+    *   Remove models — 从当前模型列表多选删除（自动处理活跃模型被删除的情况）
+    *   Done — 保存退出
+*   若编辑的是 active 配置，同步更新 `settings.json`
 
-在 TUI 中，建议使用分隔符（Separator）将不同厂商隔开。
+### 2.5 删除配置 (`remove`)
 
-**Group 1: Anthropic (Claude)**
-| 简称 | 全名 (Model ID) |
+删除一套命名配置。
+
+*   **触发指令**：`ccm remove [name]`（别名 `ccm rm`）
+*   **行为**：无参数时交互选择
+*   **确认**：删除前 confirm 确认
+*   若删除的是 active 配置 → 清除 `settings.json` 中的 ccm 管理的 env key，并将 active 置空
+
+### 2.6 模型切换 (`model`)
+
+从当前激活配置的模型列表中选择模型。
+
+*   **触发指令**：`ccm model`
+*   **前置条件**：需有活跃配置且配置中有模型
+*   **行为**：
+    *   显示当前模型
+    *   从活跃配置的 models 列表中 select
+    *   同时更新 `settings.json` 和 `ccm.json` 中的 `ANTHROPIC_MODEL`
+
+### 2.7 用量查询 (`usage`)
+
+调用代理服务 API 查询当前 Key 的余额、消耗及有效期。
+
+*   **触发指令**：`ccm usage`
+*   **数据来源**：优先从活跃配置读取 token 和 base URL，回退到 `settings.json`
+*   **API 调用**：自动从代理 Base URL 推导 API 地址（去除 `/bedrock` 后缀），请求 `/key/info`
+*   **显示内容**：
+    *   配置名称（如有活跃配置）
+    *   用户别名 (Alias)
+    *   当前消耗 (Spent)
+    *   总预算 (Budget)
+    *   剩余额度 (Remaining)
+    *   过期时间 (Expires)
+
+## 3. 数据结构
+
+### 3.1 存储文件：`~/.claude/ccm.json`
+
+```ts
+interface ProviderConfig {
+  name: string;                    // 配置名称
+  env: Record<string, string>;     // 完整 env 字典（写入 settings.json 的内容）
+  models: { name: string; value: string }[]; // 该配置可用的模型列表
+}
+
+interface CcmStore {
+  active: string | null;           // 当前激活的配置名称
+  providers: Record<string, ProviderConfig>;
+}
+```
+
+### 3.2 ccm 管理的 env key
+
+切换配置时，以下 key 会被先清除再写入，避免旧配置残留：
+
+| Key | 说明 |
 | :--- | :--- |
-| **Claude 3.7 Sonnet** | `us.anthropic.claude-3-7-sonnet-20250219-v1:0` |
-| **Claude 3.5 Sonnet (v2)** | `us.anthropic.claude-3-5-sonnet-20241022-v2:0` |
-| **Claude 3.5 Sonnet (v1)** | `us.anthropic.claude-3-5-sonnet-20240620-v1:0` |
-| **Claude 3.5 Haiku** | `us.anthropic.claude-3-5-haiku-20241022-v1:0` |
-| **Claude 3 Opus** | `us.anthropic.claude-3-opus-20240229-v1:0` |
-| **Claude 3 Sonnet** | `us.anthropic.claude-3-sonnet-20240229-v1:0` |
-| **Claude 3 Haiku** | `us.anthropic.claude-3-haiku-20240307-v1:0` |
-| **Claude Opus 4.6 (Preview)** | `us.anthropic.claude-opus-4-6-v1` |
-| **Claude Opus 4.5 (Preview)** | `us.anthropic.claude-opus-4-5-20251101-v1:0` |
-| **Claude Sonnet 4.5 (Preview)** | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
-| **Claude Haiku 4.5 (Preview)** | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
+| `CLAUDE_CODE_USE_BEDROCK` | 启用 Bedrock 模式 |
+| `CLAUDE_CODE_SKIP_BEDROCK_AUTH` | 跳过 Bedrock 原生鉴权 |
+| `ANTHROPIC_AUTH_TOKEN` | API Key |
+| `ANTHROPIC_BEDROCK_BASE_URL` | 代理 Base URL |
+| `AWS_REGION` | AWS 区域 |
+| `ANTHROPIC_MODEL` | 当前模型 |
 
-**Group 2: OpenAI (GPT)**
-| 简称 | 全名 (Model ID) |
-| :--- | :--- |
-| **GPT-5.2 (Flagship)** | `gpt-5.2` |
-| **GPT-5.1 Codex Max** | `gpt-5.1-codex-max` |
-| **GPT-5.1 Codex Mini** | `gpt-5.1-codex-mini` |
-| **GPT-5 Pro** | `gpt-5-pro` |
-| **GPT-5 Chat** | `gpt-5-chat` |
-| **GPT-4o** | `gpt-4o` |
-| **o4 Mini** | `o4-mini` |
+## 4. 技术规范
 
-**Group 3: Google (Gemini)**
-| 简称 | 全名 (Model ID) |
-| :--- | :--- |
-| **Gemini 3 Pro (Preview)** | `gemini/gemini-3-pro-preview` |
-| **Gemini 2.5 Pro** | `gemini/gemini-2.5-pro` |
-| **Gemini 2.0 Flash** | `gemini/gemini-2.0-flash` |
-| **Gemini 2.0 Flash Lite** | `gemini/gemini-2.0-flash-lite` |
+*   **运行环境**：Node.js >= 18
+*   **模块系统**：ESM-only（`"type": "module"`）
+*   **核心依赖**：
+    *   `commander`：命令行参数解析
+    *   `@inquirer/prompts`：交互式选择（select / checkbox / input / password / confirm）
+    *   `chalk`：终端彩色输出
+    *   原生 `fetch`（Node 18+）：API 请求，无需第三方 HTTP 库
+*   **配置文件**：
+    *   `~/.claude/settings.json` — claude-code 的配置文件（仅修改 `env` 字段）
+    *   `~/.claude/ccm.json` — ccm 自身的多配置存储
 
-**Group 4: Amazon & Others**
-| 简称 | 全名 (Model ID) |
-| :--- | :--- |
-| **Amazon Nova Pro** | `us.amazon.nova-pro-v1:0` |
-| **Writer Palmyra X4** | `us.writer.palmyra-x4-v1:0` |
+## 5. 附录：内置模型列表
+
+内置模型按厂商分为 5 组，用于 `add` / `edit` 命令的模型选择。用户也可添加自定义模型。
+
+**Anthropic (Claude)** — 14 个模型
+**OpenAI (GPT)** — 15 个模型
+**Google (Gemini)** — 6 个模型
+**Amazon & Others** — 4 个模型
+**Embeddings** — 3 个模型
 
 ---
 
-**在 package.json 中配置 bin 命令为 `ccm`，方便用户敲击。**
+**在 package.json 中配置 bin 命令为 `ccm`，方便用户使用。**
 
-例如：
 ```bash
-ccm login
-ccm model
-ccm usage
+ccm add        # 添加新配置
+ccm list       # 列出所有配置
+ccm use        # 切换激活配置
+ccm edit       # 修改配置
+ccm remove     # 删除配置
+ccm model      # 选择模型
+ccm usage      # 查询用量
 ```
