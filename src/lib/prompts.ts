@@ -2,8 +2,8 @@ import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 
 /**
- * Styled confirm prompt using select for better visual feedback.
- * Shows Yes/No with color highlights and arrow-key navigation.
+ * Confirm prompt using select with arrow-key navigation.
+ * Focused item: bold, unfocused item: dim gray.
  */
 export async function styledConfirm(
   message: string,
@@ -12,9 +12,14 @@ export async function styledConfirm(
   return select({
     message: `${message} ${chalk.dim("(↑↓ to switch, Enter to confirm)")}`,
     choices: [
-      { name: chalk.green.bold("Yes"), value: true },
-      { name: chalk.red.bold("No"), value: false },
+      { name: "Yes", value: true },
+      { name: "No", value: false },
     ],
     default: defaultYes,
+    theme: {
+      style: {
+        highlight: (text: string) => chalk.bold(text),
+      },
+    },
   });
 }
