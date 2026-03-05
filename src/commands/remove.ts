@@ -1,7 +1,7 @@
 import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, clearSettings } from "../lib/store.js";
-import { styledConfirm } from "../lib/prompts.js";
+import { styledConfirm, buildConfigChoices } from "../lib/prompts.js";
 
 export async function removeCommand(name?: string): Promise<void> {
   const store = await readStore();
@@ -17,10 +17,7 @@ export async function removeCommand(name?: string): Promise<void> {
   if (!target) {
     target = await select({
       message: "Select a configuration to remove:",
-      choices: names.map((n) => ({
-        name: n === store.active ? `${n} ${chalk.cyan("(active)")}` : n,
-        value: n,
-      })),
+      choices: buildConfigChoices(store, { activeLabel: "active" }),
     });
   }
 

@@ -1,8 +1,9 @@
-import { input, password, checkbox, select } from "@inquirer/prompts";
+import { input, password, checkbox, select, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
-import { buildCheckboxChoices } from "../lib/models.js";
+import { MODEL_GROUPS, buildCheckboxChoices } from "../lib/models.js";
+import { PROVIDER_TEMPLATES, type ProviderTemplate, type ProviderEnvField } from "../lib/providers.js";
 import { styledConfirm } from "../lib/prompts.js";
 
 export async function addCommand(): Promise<void> {
@@ -18,30 +19,40 @@ export async function addCommand(): Promise<void> {
     },
   });
 
-  // 2. Base URL
-  const baseUrl = await input({
-    message: "Proxy Base URL:",
-    default: "https://www.litellm.org/bedrock",
+  // 2. Provider selection
+  const providerId = await select({
+    message: "How do you want to set up this configuration?",
+    choices: [
+      new Separator(chalk.bold("── Provider Templates ──")),
+      ...PROVIDER_TEMPLATES.map((t) => ({
+        name: `${t.name.padEnd(22)} ${chalk.dim(t.description)}`,
+        value: t.id,
+      })),
+      new Separator(chalk.bold("── Manual ──")),
+      { name: "Fully manual          " + chalk.dim("Configure all environment variables yourself"), value: "__manual__" },
+    ],
+    pageSize: 20,
   });
 
-  // 3. API Key
-  const apiKey = await password({
-    message: "API Key (sk-...):",
-    mask: "*",
-  });
+  let env: Record<string, string> = {};
+  let models: { name: string; value: string }[] = [];
+  let templateId: string | undefined;
+  let modelGroups = MODEL_GROUPS;
 
-  if (!apiKey || apiKey.trim().length === 0) {
-    console.log(chalk.red("Error: API Key cannot be empty."));
-    process.exit(1);
+  if (providerId === "__manual__") {
+    // Manual mode: prompt arbitrary key-value pairs
+    env = await promptManualEnv();
+    // All model groups
+  } else {
+    const template = PROVIDER_TEMPLATES.find((t) => t.id === providerId)!;
+    templateId = template.id;
+    env = await promptEnvFields(template.envFields);
+    if (template.models.length > 0) {
+      modelGroups = template.models;
+    }
   }
 
-  // 4. Region (optional)
-  const region = await input({
-    message: "AWS Region (leave empty to skip):",
-    default: "us-west-2",
-  });
-
-  // 5. Models
+  // 3. Models
   const modelMode = await select({
     message: "How do you want to configure models?",
     choices: [
@@ -50,12 +61,10 @@ export async function addCommand(): Promise<void> {
     ],
   });
 
-  let models: { name: string; value: string }[] = [];
-
   if (modelMode === "builtin") {
     const selectedValues = await checkbox({
       message: "Select models (space to toggle, enter to confirm):",
-      choices: buildCheckboxChoices(),
+      choices: buildCheckboxChoices(undefined, modelGroups),
       pageSize: 20,
     });
 
@@ -64,9 +73,7 @@ export async function addCommand(): Promise<void> {
       return { name: label, value: v };
     });
 
-    // Ask if user wants to add custom models
     const addCustom = await styledConfirm("Add custom models?", false);
-
     if (addCustom) {
       models.push(...(await promptCustomModels()));
     }
@@ -86,18 +93,6 @@ export async function addCommand(): Promise<void> {
     console.log(chalk.yellow("Warning: No models selected. You can add models later with `ccm edit`."));
   }
 
-  // Build env
-  const env: Record<string, string> = {
-    CLAUDE_CODE_USE_BEDROCK: "1",
-    CLAUDE_CODE_SKIP_BEDROCK_AUTH: "1",
-    ANTHROPIC_AUTH_TOKEN: apiKey.trim(),
-    ANTHROPIC_BEDROCK_BASE_URL: baseUrl.trim(),
-  };
-
-  if (region.trim()) {
-    env.AWS_REGION = region.trim();
-  }
-
   if (models.length > 0) {
     env.ANTHROPIC_MODEL = models[0].value;
   }
@@ -106,11 +101,12 @@ export async function addCommand(): Promise<void> {
   const trimmedName = name.trim();
   store.providers[trimmedName] = {
     name: trimmedName,
+    ...(templateId ? { provider: templateId } : {}),
     env,
     models,
   };
 
-  // 6. Activate?
+  // Activate?
   const shouldActivate = await styledConfirm("Activate this configuration now?");
 
   if (shouldActivate) {
@@ -123,6 +119,58 @@ export async function addCommand(): Promise<void> {
     await writeStore(store);
     console.log(chalk.green(`Configuration "${trimmedName}" created.`));
   }
+}
+
+/** Prompt the user for env fields defined by a provider template */
+export async function promptEnvFields(fields: ProviderEnvField[]): Promise<Record<string, string>> {
+  const env: Record<string, string> = {};
+  for (const field of fields) {
+    if (field.fixed !== undefined) {
+      env[field.key] = field.fixed;
+      continue;
+    }
+    let value: string;
+    if (field.secret) {
+      value = await password({ message: `${field.label}:`, mask: "*" });
+    } else {
+      value = await input({
+        message: `${field.label}:`,
+        ...(field.default !== undefined ? { default: field.default } : {}),
+      });
+    }
+    if (field.required && !value.trim()) {
+      console.log(chalk.red(`Error: ${field.label} cannot be empty.`));
+      process.exit(1);
+    }
+    if (value.trim()) {
+      env[field.key] = value.trim();
+    }
+  }
+  return env;
+}
+
+async function promptManualEnv(): Promise<Record<string, string>> {
+  const env: Record<string, string> = {};
+  console.log(chalk.dim("Add environment variables for this configuration."));
+  let more = true;
+  while (more) {
+    const key = await input({ message: "Env var name:" });
+    if (!key.trim()) break;
+    const isSecret = key.trim().toLowerCase().includes("key") ||
+                     key.trim().toLowerCase().includes("secret") ||
+                     key.trim().toLowerCase().includes("token");
+    let value: string;
+    if (isSecret) {
+      value = await password({ message: `Value for ${key.trim()}:`, mask: "*" });
+    } else {
+      value = await input({ message: `Value for ${key.trim()}:` });
+    }
+    if (value.trim()) {
+      env[key.trim()] = value.trim();
+    }
+    more = await styledConfirm("Add another variable?", false);
+  }
+  return env;
 }
 
 async function promptCustomModels(): Promise<{ name: string; value: string }[]> {

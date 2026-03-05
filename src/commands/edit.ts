@@ -2,8 +2,10 @@ import { input, password, select, checkbox } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
-import { buildCheckboxChoices } from "../lib/models.js";
-import { styledConfirm } from "../lib/prompts.js";
+import { MODEL_GROUPS, buildCheckboxChoices } from "../lib/models.js";
+import { findTemplate } from "../lib/providers.js";
+import { promptEnvFields } from "../commands/add.js";
+import { styledConfirm, buildConfigChoices } from "../lib/prompts.js";
 
 export async function editCommand(name?: string): Promise<void> {
   const store = await readStore();
@@ -17,16 +19,11 @@ export async function editCommand(name?: string): Promise<void> {
   let target = name;
 
   if (!target) {
-    // Default to active, or prompt
-    if (store.active && store.providers[store.active]) {
-      target = store.active;
-      console.log(chalk.dim(`Editing active configuration: ${target}`));
-    } else {
-      target = await select({
-        message: "Select a configuration to edit:",
-        choices: names.map((n) => ({ name: n, value: n })),
-      });
-    }
+    target = await select({
+      message: "Select a configuration to edit:",
+      choices: buildConfigChoices(store, { activeLabel: "active" }),
+      default: store.active ?? undefined,
+    });
   }
 
   if (!store.providers[target]) {
@@ -35,20 +32,14 @@ export async function editCommand(name?: string): Promise<void> {
   }
 
   const provider = store.providers[target];
+  const template = provider.provider ? findTemplate(provider.provider) : undefined;
   let done = false;
 
   while (!done) {
+    const choices = buildEditChoices(provider, template !== undefined);
     const action = await select({
       message: `Editing "${target}" — what do you want to change?`,
-      choices: [
-        { name: "Name", value: "name" },
-        { name: "Base URL", value: "url" },
-        { name: "API Key", value: "key" },
-        { name: "Region", value: "region" },
-        { name: "Add models", value: "add-models" },
-        { name: "Remove models", value: "remove-models" },
-        { name: chalk.green("Done"), value: "done" },
-      ],
+      choices,
     });
 
     switch (action) {
@@ -75,6 +66,38 @@ export async function editCommand(name?: string): Promise<void> {
         }
         break;
       }
+      case "env-fields": {
+        if (!template) break;
+        const editableFields = template.envFields.filter((f) => !f.fixed);
+        if (editableFields.length === 0) {
+          console.log(chalk.yellow("No editable environment fields for this provider."));
+          break;
+        }
+        const fieldKey = await select({
+          message: "Which field to edit?",
+          choices: editableFields.map((f) => ({
+            name: `${f.label.padEnd(30)} ${chalk.dim(maskIfSecret(provider.env[f.key] ?? "", f.secret))}`,
+            value: f.key,
+          })),
+        });
+        const field = editableFields.find((f) => f.key === fieldKey)!;
+        let value: string;
+        if (field.secret) {
+          console.log(chalk.dim(`Current: ${maskKey(provider.env[field.key] ?? "")}`));
+          value = await password({ message: `New ${field.label}:`, mask: "*" });
+        } else {
+          value = await input({
+            message: `${field.label}:`,
+            default: provider.env[field.key] ?? field.default ?? "",
+          });
+        }
+        if (value.trim()) {
+          provider.env[field.key] = value.trim();
+          console.log(chalk.green(`${field.label} updated.`));
+        }
+        break;
+      }
+      // Legacy edit actions for configs without a template
       case "url": {
         const val = await input({
           message: "Base URL:",
@@ -107,10 +130,11 @@ export async function editCommand(name?: string): Promise<void> {
         break;
       }
       case "add-models": {
+        const modelGroups = template?.models.length ? template.models : MODEL_GROUPS;
         const existing = new Set(provider.models.map((m) => m.value));
         const selected = await checkbox({
           message: "Select models to add (space to toggle):",
-          choices: buildCheckboxChoices(existing),
+          choices: buildCheckboxChoices(existing, modelGroups),
           pageSize: 20,
         });
 
@@ -190,7 +214,40 @@ export async function editCommand(name?: string): Promise<void> {
   console.log(chalk.green(`Configuration "${target}" saved.`));
 }
 
+function buildEditChoices(
+  provider: { provider?: string; env: Record<string, string> },
+  hasTemplate: boolean,
+): { name: string; value: string }[] {
+  const choices: { name: string; value: string }[] = [
+    { name: "Name", value: "name" },
+  ];
+
+  if (hasTemplate) {
+    choices.push({ name: "Environment fields", value: "env-fields" });
+  } else {
+    // Legacy menu for configs without a provider template
+    choices.push(
+      { name: "Base URL", value: "url" },
+      { name: "API Key", value: "key" },
+      { name: "Region", value: "region" },
+    );
+  }
+
+  choices.push(
+    { name: "Add models", value: "add-models" },
+    { name: "Remove models", value: "remove-models" },
+    { name: chalk.green("Done"), value: "done" },
+  );
+
+  return choices;
+}
+
 function maskKey(key: string): string {
   if (key.length <= 8) return "****";
   return key.slice(0, 4) + "****" + key.slice(-4);
+}
+
+function maskIfSecret(value: string, secret?: boolean): string {
+  if (!value) return chalk.dim("(not set)");
+  return secret ? maskKey(value) : value;
 }

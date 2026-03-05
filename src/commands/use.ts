@@ -1,6 +1,7 @@
 import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
+import { buildConfigChoices } from "../lib/prompts.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
 
 export async function useCommand(name?: string): Promise<void> {
@@ -17,10 +18,7 @@ export async function useCommand(name?: string): Promise<void> {
   if (!target) {
     target = await select({
       message: "Select a configuration to activate:",
-      choices: names.map((n) => ({
-        name: n === store.active ? `${n} ${chalk.cyan("(current)")}` : n,
-        value: n,
-      })),
+      choices: buildConfigChoices(store, { activeLabel: "current" }),
     });
   }
 

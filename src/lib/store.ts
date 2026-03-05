@@ -2,12 +2,14 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readSettings, writeSettings } from "./settings.js";
+import { PROVIDER_TEMPLATES } from "./providers.js";
 
 const STORE_DIR = join(homedir(), ".claude");
 const STORE_PATH = join(STORE_DIR, "ccm.json");
 
 export interface ProviderConfig {
   name: string;
+  provider?: string;
   env: Record<string, string>;
   models: { name: string; value: string }[];
 }
@@ -17,15 +19,12 @@ export interface CcmStore {
   providers: Record<string, ProviderConfig>;
 }
 
-/** Keys in settings.json env that ccm manages */
-const CCM_ENV_KEYS = [
-  "CLAUDE_CODE_USE_BEDROCK",
-  "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
-  "ANTHROPIC_AUTH_TOKEN",
-  "ANTHROPIC_BEDROCK_BASE_URL",
-  "AWS_REGION",
-  "ANTHROPIC_MODEL",
-] as const;
+/** Keys in settings.json env that ccm manages — derived from all templates */
+const CCM_ENV_KEYS: string[] = [
+  ...new Set(
+    PROVIDER_TEMPLATES.flatMap((t) => t.envFields.map((f) => f.key)).concat(["ANTHROPIC_MODEL"]),
+  ),
+];
 
 function defaultStore(): CcmStore {
   return { active: null, providers: {} };

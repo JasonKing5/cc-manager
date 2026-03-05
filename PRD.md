@@ -4,7 +4,7 @@
 
 **产品名称**：cc-manager
 **版本**：0.1.0
-**描述**：一个轻量级的 Node.js CLI 工具，帮助开发者管理多套 `claude-code` 代理服务配置。支持在不同的 API Key、代理地址（LiteLLM、OpenRouter、智谱、DeepSeek 等）和模型列表之间快速切换，实现多场景（个人/公司/不同代理）的无缝管理。
+**描述**：一个轻量级的 Node.js CLI 工具，帮助开发者管理多套 `claude-code` 提供商配置。支持 AWS Bedrock、Google Vertex AI、LiteLLM 代理、DeepSeek（原生 Anthropic 格式）等提供商，在不同的 API Key、端点和模型列表之间快速切换，实现多场景（个人/公司/不同提供商）的无缝管理。
 
 ## 2. 核心功能需求
 
@@ -15,14 +15,14 @@
 *   **触发指令**：`ccm add`
 *   **交互流程**：
     1.  输入配置名称（校验非空、不重复）
-    2.  输入代理 Base URL（默认 `https://www.litellm.org/bedrock`）
-    3.  输入 API Key（掩码输入）
-    4.  输入 AWS Region（默认 `us-west-2`，可留空跳过）
-    5.  选择模型配置方式：
+    2.  选择提供商模板（LiteLLM / Bedrock / Vertex / DeepSeek / 手动配置）
+    3.  根据模板提示输入 env 变量（固定值自动设置，密钥掩码输入，可选字段显示默认值）
+        *   手动模式：逐个输入环境变量，自动检测密钥字段（key/secret/token）使用掩码输入，每条后确认"是否继续添加"
+    4.  选择模型配置方式：
         *   **方式一**：从内置模型列表多选（checkbox，按厂商分组），之后可逐个追加自定义模型
         *   **方式二**：批量输入模型 ID（逗号分隔）
-    6.  确认是否立即激活此配置（默认 yes）
-    7.  若激活 → 写入 `~/.claude/settings.json`
+    5.  确认是否立即激活此配置（默认 yes）
+    6.  若激活 → 写入 `~/.claude/settings.json`
 
 ### 2.2 列出配置 (`list`)
 
@@ -63,12 +63,10 @@
 通过交互菜单修改已有配置的各项属性。
 
 *   **触发指令**：`ccm edit [name]`
-*   **行为**：无参数时编辑当前激活配置
+*   **行为**：无参数时显示配置选择器（活跃配置预选中），用户可以看到所有配置的详细信息后再选择要编辑的配置
 *   **交互菜单**：
     *   Name — 重命名
-    *   Base URL — 修改代理地址
-    *   API Key — 修改密钥（显示掩码后的当前值）
-    *   Region — 修改或清除区域
+    *   环境变量 — 根据提供商模板修改可编辑字段（非固定值字段）
     *   Add models — 从内置列表多选 + 追加自定义模型
     *   Remove models — 从当前模型列表多选删除（自动处理活跃模型被删除的情况）
     *   Done — 保存退出
@@ -100,7 +98,7 @@
 
 *   **触发指令**：`ccm usage`
 *   **数据来源**：优先从活跃配置读取 token 和 base URL，回退到 `settings.json`
-*   **API 调用**：自动从代理 Base URL 推导 API 地址（去除 `/bedrock` 后缀），请求 `/key/info`
+*   **API 调用**：自动从代理 Base URL 推导 API 地址，请求 `/key/info`
 *   **显示内容**：
     *   配置名称（如有活跃配置）
     *   用户别名 (Alias)
@@ -128,15 +126,22 @@ interface CcmStore {
 
 ### 3.2 ccm 管理的 env key
 
-切换配置时，以下 key 会被先清除再写入，避免旧配置残留：
+切换配置时，所有模板中定义的 env key 会被先清除再写入，避免旧配置残留。管理的 key 从 `PROVIDER_TEMPLATES` 动态派生，包括但不限于：
 
 | Key | 说明 |
 | :--- | :--- |
-| `CLAUDE_CODE_USE_BEDROCK` | 启用 Bedrock 模式 |
-| `CLAUDE_CODE_SKIP_BEDROCK_AUTH` | 跳过 Bedrock 原生鉴权 |
+| `ANTHROPIC_BASE_URL` | 统一 Anthropic API 端点（LiteLLM / DeepSeek） |
 | `ANTHROPIC_AUTH_TOKEN` | API Key |
-| `ANTHROPIC_BEDROCK_BASE_URL` | 代理 Base URL |
+| `CLAUDE_CODE_USE_BEDROCK` | 启用 Bedrock 模式 |
+| `CLAUDE_CODE_USE_VERTEX` | 启用 Vertex AI 模式 |
 | `AWS_REGION` | AWS 区域 |
+| `AWS_ACCESS_KEY_ID` | AWS 访问密钥 ID |
+| `AWS_SECRET_ACCESS_KEY` | AWS 秘密访问密钥 |
+| `CLOUD_ML_REGION` | Vertex AI 区域 |
+| `ANTHROPIC_VERTEX_PROJECT_ID` | GCP 项目 ID |
+| `API_TIMEOUT_MS` | API 超时时间（毫秒） |
+| `ANTHROPIC_SMALL_FAST_MODEL` | 小型快速模型（如 deepseek-chat） |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | 禁用非必要流量 |
 | `ANTHROPIC_MODEL` | 当前模型 |
 
 ## 4. 技术规范

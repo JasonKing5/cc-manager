@@ -1,6 +1,6 @@
 # cc-manager (ccm)
 
-A lightweight CLI tool to configure [claude-code](https://docs.anthropic.com/en/docs/claude-code) for Bedrock/LiteLLM proxy services.
+A lightweight CLI tool to configure [claude-code](https://docs.anthropic.com/en/docs/claude-code) for multiple providers (AWS Bedrock, Google Vertex AI, LiteLLM proxies, DeepSeek).
 
 Manage multiple provider configurations — each with its own API key, proxy URL, and model list — and switch between them instantly.
 
@@ -20,60 +20,95 @@ Requires **Node.js >= 18**.
 # 1. Create a provider configuration
 ccm add
 
-# 2. Pick a model from the active configuration
+# 2. Switch between configurations
+ccm use
+
+# 3. Pick a model from the active configuration
 ccm model
 
-# 3. Check your balance
+# 4. Check your balance
 ccm usage
 ```
 
 ## Commands
 
+| Command | Description |
+|---------|-------------|
+| `ccm add` | Create a new provider configuration |
+| `ccm list` | List all configurations |
+| `ccm use [name]` | Switch active configuration |
+| `ccm edit [name]` | Edit a configuration |
+| `ccm remove [name]` | Remove a configuration |
+| `ccm model` | Select model from active config |
+| `ccm usage` | Query API key balance/quota |
+
+---
+
 ### `ccm add`
 
 Interactively create a new named provider configuration.
 
+Guides you through provider selection (LiteLLM, Bedrock, Vertex, DeepSeek, or fully manual) and model configuration.
+
 ```
 $ ccm add
-? Configuration name: personal-litellm
-? Proxy Base URL: https://www.litellm.org/bedrock
-? API Key (sk-...): ****
-? AWS Region (leave empty to skip): us-west-2
+? Configuration name: my-deepseek
+? How do you want to set up this configuration? DeepSeek
+? API Key: ****
+? API Timeout (ms): 600000
+? Small/Fast Model: deepseek-chat
 ? How do you want to configure models? Select from built-in list
 ? Select models (space to toggle, enter to confirm):
   ...
 ? Activate this configuration now? Yes
-Configuration "personal-litellm" created and activated.
+Configuration "my-deepseek" created and activated.
 ```
 
 ### `ccm list`
 
 List all saved configurations with their details. Alias: `ccm ls`.
 
+Shows provider type, URL/region, model count, and the currently active model for each configuration.
+
 ```
 $ ccm list
 
   Configurations
   ─────────────────────────────
-  ● personal-litellm (active)
-    URL:    https://www.litellm.org/bedrock
-    Region: us-west-2
-    Models: 3
-    Active: us.anthropic.claude-opus-4-6-v1
+  ● my-deepseek (active)
+    Provider: DeepSeek
+    URL:      https://api.deepseek.com/anthropic
+    Models:   3
+    Active:   deepseek-chat
 
-  ○ company-deepseek
-    URL:    https://company-proxy.example.com/bedrock
-    Region: us-east-1
-    Models: 2
+  ○ work-bedrock
+    Provider: AWS Bedrock
+    Region:   us-east-1
+    Models:   5
+
+  ○ personal-litellm
+    Provider: LiteLLM Proxy
+    URL:      https://proxy.example.com
+    Models:   8
 ```
 
 ### `ccm use [name]`
 
-Switch the active configuration. Without a name, shows an interactive selector.
+Switch the active configuration. Without a name, shows a rich interactive selector with provider details for each config.
 
 ```
-$ ccm use company-deepseek
-Switched to "company-deepseek".
+$ ccm use
+? Select a configuration to activate:
+❯ my-deepseek (current)   DeepSeek · https://api.deepseek.com/anthropic · 3 model(s) · active: deepseek-chat
+  work-bedrock             AWS Bedrock · region: us-east-1 · 5 model(s)
+  personal-litellm         LiteLLM Proxy · https://proxy.example.com · 8 model(s)
+```
+
+You can also pass the name directly to skip the selector:
+
+```
+$ ccm use work-bedrock
+Switched to "work-bedrock".
 Settings written to ~/.claude/settings.json
 ```
 
@@ -81,16 +116,17 @@ Switching clears all ccm-managed env keys from `settings.json` before writing th
 
 ### `ccm edit [name]`
 
-Edit a configuration interactively. Without a name, edits the active configuration.
+Edit a configuration interactively. Without a name, shows a selector (with the active config pre-selected) so you can see all options at a glance.
 
 ```
 $ ccm edit
-Editing active configuration: personal-litellm
-? Editing "personal-litellm" — what do you want to change?
+? Select a configuration to edit:
+❯ my-deepseek (active)   DeepSeek · https://api.deepseek.com/anthropic · 3 model(s)
+  work-bedrock            AWS Bedrock · region: us-east-1 · 5 model(s)
+
+? Editing "my-deepseek" — what do you want to change?
 > Name
-  Base URL
-  API Key
-  Region
+  Environment fields
   Add models
   Remove models
   Done
@@ -100,12 +136,16 @@ Changes to the active configuration are automatically synced to `settings.json`.
 
 ### `ccm remove [name]`
 
-Remove a configuration. Alias: `ccm rm`. Without a name, shows an interactive selector.
+Remove a configuration. Alias: `ccm rm`. Without a name, shows a rich interactive selector.
 
 ```
-$ ccm remove company-deepseek
-? Remove "company-deepseek"? Yes
-Configuration "company-deepseek" removed.
+$ ccm remove
+? Select a configuration to remove:
+❯ my-deepseek (active)   DeepSeek · https://api.deepseek.com/anthropic · 3 model(s)
+  work-bedrock            AWS Bedrock · region: us-east-1 · 5 model(s)
+
+? Remove "my-deepseek"? Yes
+Removed active configuration. Settings cleaned up.
 ```
 
 If the active configuration is removed, its env keys are cleaned up from `settings.json`.
@@ -225,7 +265,7 @@ When adding or editing a configuration, you can select from 42+ built-in models 
 - **`~/.claude/ccm.json`** — stores all named provider configurations (name, env vars, model list) and which one is active
 - **`~/.claude/settings.json`** — the configuration file used by `claude-code`; ccm only modifies the `env` object and preserves all other fields
 
-When you switch configurations with `ccm use`, ccm first clears all its managed env keys (`CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BEDROCK_BASE_URL`, `AWS_REGION`, `ANTHROPIC_MODEL`) from `settings.json`, then writes the new provider's values. This prevents stale keys from leaking between configurations.
+When you switch configurations with `ccm use`, ccm first clears all its managed env keys from `settings.json`, then writes the new provider's values. The managed key list is dynamically derived from all provider templates and includes keys like `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `AWS_REGION`, `ANTHROPIC_MODEL`, `API_TIMEOUT_MS`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, etc. This prevents stale keys from leaking between configurations.
 
 ## License
 

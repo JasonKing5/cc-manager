@@ -87,9 +87,10 @@ export const ALL_MODELS: ModelChoice[] = MODEL_GROUPS.flatMap((g) => g.models);
 /** Build checkbox choices grouped by vendor for @inquirer/prompts checkbox */
 export function buildCheckboxChoices(
   selectedValues?: Set<string>,
+  groups?: ModelGroup[],
 ): ({ name: string; value: string; checked: boolean } | Separator)[] {
   const choices: ({ name: string; value: string; checked: boolean } | Separator)[] = [];
-  for (const group of MODEL_GROUPS) {
+  for (const group of groups ?? MODEL_GROUPS) {
     choices.push(new Separator(chalk.bold(`─────── ${group.label} ───────`)));
     for (const m of group.models) {
       choices.push({
