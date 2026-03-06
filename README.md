@@ -88,7 +88,7 @@ $ ccm list
 
   ○ personal-litellm
     Provider: LiteLLM Proxy
-    URL:      https://proxy.example.com
+    URL:      https://www.litellm.org/bedrock
     Models:   8
 ```
 
@@ -101,7 +101,7 @@ $ ccm use
 ? Select a configuration to activate:
 ❯ my-deepseek (current)   DeepSeek · https://api.deepseek.com/anthropic · 3 model(s) · active: deepseek-chat
   work-bedrock             AWS Bedrock · region: us-east-1 · 5 model(s)
-  personal-litellm         LiteLLM Proxy · https://proxy.example.com · 8 model(s)
+  personal-litellm         LiteLLM Proxy · https://www.litellm.org/bedrock · 8 model(s)
 ```
 
 You can also pass the name directly to skip the selector:
@@ -265,7 +265,7 @@ When adding or editing a configuration, you can select from 42+ built-in models 
 - **`~/.claude/ccm.json`** — stores all named provider configurations (name, env vars, model list) and which one is active
 - **`~/.claude/settings.json`** — the configuration file used by `claude-code`; ccm only modifies the `env` object and preserves all other fields
 
-When you switch configurations with `ccm use`, ccm first clears all its managed env keys from `settings.json`, then writes the new provider's values. The managed key list is dynamically derived from all provider templates and includes keys like `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `AWS_REGION`, `ANTHROPIC_MODEL`, `API_TIMEOUT_MS`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, etc. This prevents stale keys from leaking between configurations.
+When you switch configurations with `ccm use`, ccm first clears all its managed env keys from `settings.json`, then writes the new provider's values. The managed key list is dynamically derived from all provider templates and includes keys like `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH`, `CLAUDE_CODE_USE_VERTEX`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `AWS_REGION`, `ANTHROPIC_MODEL`, `API_TIMEOUT_MS`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, etc. This prevents stale keys from leaking between configurations.
 
 ## License
 

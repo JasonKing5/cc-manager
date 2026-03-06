@@ -34,10 +34,13 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
   {
     id: "litellm",
     name: "LiteLLM Proxy",
-    description: "Connect through a LiteLLM proxy server",
+    description: "Connect through a LiteLLM proxy server (Bedrock mode)",
     envFields: [
-      { key: "ANTHROPIC_BASE_URL", label: "Proxy Base URL", required: true },
+      { key: "CLAUDE_CODE_USE_BEDROCK", label: "", fixed: "1" },
+      { key: "CLAUDE_CODE_SKIP_BEDROCK_AUTH", label: "", fixed: "1" },
+      { key: "ANTHROPIC_BEDROCK_BASE_URL", label: "Proxy Base URL", default: "https://www.litellm.org/bedrock" },
       { key: "ANTHROPIC_AUTH_TOKEN", label: "API Key", secret: true, required: true },
+      { key: "AWS_REGION", label: "AWS Region", default: "us-west-2" },
     ],
     models: [],
   },
