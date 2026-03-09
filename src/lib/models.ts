@@ -15,6 +15,7 @@ export const MODEL_GROUPS: ModelGroup[] = [
   {
     label: "Anthropic (Claude)",
     models: [
+      { name: "Claude Opus 4.6 (Preview) - Bedrock", value: "bedrock/us.anthropic.claude-opus-4-6-v1" },
       { name: "Claude Opus 4.6 (Preview)", value: "us.anthropic.claude-opus-4-6-v1" },
       { name: "Claude Opus 4.5 (Preview)", value: "us.anthropic.claude-opus-4-5-20251101-v1:0" },
       { name: "Claude Opus 4.1", value: "us.anthropic.claude-opus-4-1-20250805-v1:0" },

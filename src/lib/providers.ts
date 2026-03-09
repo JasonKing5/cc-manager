@@ -19,12 +19,126 @@ export interface ProviderTemplate {
 
 // ---------- Provider-specific model groups ----------
 
+const BEDROCK_CLAUDE_MODELS: ModelGroup = {
+  label: "Anthropic (Claude)",
+  models: [
+    { name: "Claude Opus 4", value: "us.anthropic.claude-opus-4-20250514-v1:0" },
+    { name: "Claude Sonnet 4", value: "us.anthropic.claude-sonnet-4-20250514-v1:0" },
+    { name: "Claude Haiku 4", value: "us.anthropic.claude-haiku-4-20250514-v1:0" },
+    { name: "Claude 3.7 Sonnet", value: "us.anthropic.claude-3-7-sonnet-20250219-v1:0" },
+    { name: "Claude 3.5 Sonnet v2", value: "us.anthropic.claude-3-5-sonnet-20241022-v2:0" },
+    { name: "Claude 3.5 Haiku", value: "us.anthropic.claude-3-5-haiku-20241022-v1:0" },
+    { name: "Claude 3 Opus", value: "us.anthropic.claude-3-opus-20240229-v1:0" },
+    { name: "Claude 3 Haiku", value: "us.anthropic.claude-3-haiku-20240307-v1:0" },
+  ],
+};
+
+const BEDROCK_OTHER_MODELS: ModelGroup = {
+  label: "Amazon & Others",
+  models: [
+    { name: "Amazon Nova Pro", value: "us.amazon.nova-pro-v1:0" },
+    { name: "Amazon Nova Lite", value: "us.amazon.nova-lite-v1:0" },
+    { name: "Amazon Nova Micro", value: "us.amazon.nova-micro-v1:0" },
+    { name: "Llama 3.1 70B Instruct", value: "us.meta.llama3-1-70b-instruct-v1:0" },
+    { name: "Mistral Large 2", value: "mistral.mistral-large-2407-v1:0" },
+  ],
+};
+
+const VERTEX_CLAUDE_MODELS: ModelGroup = {
+  label: "Anthropic (Claude)",
+  models: [
+    { name: "Claude Opus 4", value: "claude-opus-4@20250514" },
+    { name: "Claude Sonnet 4", value: "claude-sonnet-4@20250514" },
+    { name: "Claude Haiku 4", value: "claude-haiku-4@20250514" },
+    { name: "Claude 3.7 Sonnet", value: "claude-3-7-sonnet@20250219" },
+    { name: "Claude 3.5 Sonnet v2", value: "claude-3-5-sonnet-v2@20241022" },
+    { name: "Claude 3.5 Haiku", value: "claude-3-5-haiku@20241022" },
+    { name: "Claude 3 Opus", value: "claude-3-opus@20240229" },
+    { name: "Claude 3 Haiku", value: "claude-3-haiku@20240307" },
+  ],
+};
+
+const VERTEX_GEMINI_MODELS: ModelGroup = {
+  label: "Google (Gemini)",
+  models: [
+    { name: "Gemini 2.5 Pro", value: "gemini-2.5-pro" },
+    { name: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
+    { name: "Gemini 2.0 Flash", value: "gemini-2.0-flash" },
+    { name: "Gemini 2.0 Flash Lite", value: "gemini-2.0-flash-lite" },
+  ],
+};
+
 const DEEPSEEK_MODELS: ModelGroup = {
   label: "DeepSeek",
   models: [
-    { name: "DeepSeek-V3", value: "deepseek-chat" },
-    { name: "DeepSeek-R1", value: "deepseek-reasoner" },
-    { name: "DeepSeek-Coder-V2", value: "deepseek-coder" },
+    { name: "DeepSeek V3 (Chat)", value: "deepseek-chat" },
+    { name: "DeepSeek R1 (Reasoning)", value: "deepseek-reasoner" },
+  ],
+};
+
+const OPENROUTER_MODELS: ModelGroup = {
+  label: "OpenRouter (Popular)",
+  models: [
+    { name: "Claude Opus 4", value: "anthropic/claude-opus-4" },
+    { name: "Claude Sonnet 4", value: "anthropic/claude-sonnet-4" },
+    { name: "Claude Haiku 3.5", value: "anthropic/claude-3.5-haiku" },
+    { name: "GPT-4o", value: "openai/gpt-4o" },
+    { name: "o3 Mini", value: "openai/o3-mini" },
+    { name: "Gemini 2.5 Pro", value: "google/gemini-2.5-pro" },
+    { name: "Gemini 2.5 Flash", value: "google/gemini-2.5-flash" },
+    { name: "DeepSeek R1", value: "deepseek/deepseek-r1" },
+    { name: "DeepSeek V3", value: "deepseek/deepseek-chat" },
+    { name: "Llama 4 Maverick", value: "meta-llama/llama-4-maverick" },
+    { name: "Qwen3 235B", value: "qwen/qwen3-235b" },
+    { name: "Mistral Large", value: "mistralai/mistral-large" },
+  ],
+};
+
+const KIMI_MODELS: ModelGroup = {
+  label: "Kimi (Moonshot)",
+  models: [
+    { name: "Kimi K2", value: "kimi-k2" },
+    { name: "Moonshot v1 128K", value: "moonshot-v1-128k" },
+    { name: "Moonshot v1 32K", value: "moonshot-v1-32k" },
+    { name: "Moonshot v1 8K", value: "moonshot-v1-8k" },
+  ],
+};
+
+const ZHIPU_MODELS: ModelGroup = {
+  label: "Zhipu AI (GLM)",
+  models: [
+    { name: "GLM-4-Plus", value: "glm-4-plus" },
+    { name: "GLM-4-Long", value: "glm-4-long" },
+    { name: "GLM-4-Flash", value: "glm-4-flash" },
+    { name: "GLM-4-AirX", value: "glm-4-airx" },
+    { name: "CodeGeeX-4", value: "codegeex-4" },
+  ],
+};
+
+const OLLAMA_MODELS: ModelGroup = {
+  label: "Ollama (Local)",
+  models: [
+    { name: "Llama 3.3 70B", value: "llama3.3:70b" },
+    { name: "Llama 3.2 3B", value: "llama3.2:3b" },
+    { name: "DeepSeek R1 14B", value: "deepseek-r1:14b" },
+    { name: "DeepSeek R1 32B", value: "deepseek-r1:32b" },
+    { name: "Qwen 2.5 Coder 32B", value: "qwen2.5-coder:32b" },
+    { name: "Qwen 2.5 Coder 7B", value: "qwen2.5-coder:7b" },
+    { name: "Codestral 22B", value: "codestral:22b" },
+    { name: "Phi-4 14B", value: "phi4:14b" },
+    { name: "Mistral 7B", value: "mistral:7b" },
+  ],
+};
+
+const QWEN_MODELS: ModelGroup = {
+  label: "Qwen (Alibaba)",
+  models: [
+    { name: "Qwen Max", value: "qwen-max" },
+    { name: "Qwen Plus", value: "qwen-plus" },
+    { name: "Qwen Turbo", value: "qwen-turbo" },
+    { name: "Qwen Long", value: "qwen-long" },
+    { name: "Qwen Coder Plus", value: "qwen-coder-plus" },
+    { name: "Qwen Coder Turbo", value: "qwen-coder-turbo" },
   ],
 };
 
@@ -54,7 +168,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       { key: "AWS_ACCESS_KEY_ID", label: "AWS Access Key ID", required: true },
       { key: "AWS_SECRET_ACCESS_KEY", label: "AWS Secret Access Key", secret: true, required: true },
     ],
-    models: [],
+    models: [BEDROCK_CLAUDE_MODELS, BEDROCK_OTHER_MODELS],
   },
   {
     id: "vertex",
@@ -65,7 +179,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       { key: "CLOUD_ML_REGION", label: "Cloud ML Region", default: "us-east5", required: true },
       { key: "ANTHROPIC_VERTEX_PROJECT_ID", label: "GCP Project ID", required: true },
     ],
-    models: [],
+    models: [VERTEX_CLAUDE_MODELS, VERTEX_GEMINI_MODELS],
   },
   {
     id: "deepseek",
@@ -79,6 +193,65 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       { key: "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", label: "", fixed: "1" },
     ],
     models: [DEEPSEEK_MODELS],
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    description: "OpenRouter API — access 320+ models from all providers",
+    envFields: [
+      { key: "ANTHROPIC_BASE_URL", label: "", fixed: "https://openrouter.ai/api/v1" },
+      { key: "ANTHROPIC_AUTH_TOKEN", label: "API Key", secret: true, required: true },
+      { key: "ANTHROPIC_SMALL_FAST_MODEL", label: "Small/Fast Model", default: "anthropic/claude-3.5-haiku" },
+    ],
+    models: [OPENROUTER_MODELS],
+  },
+  {
+    id: "kimi",
+    name: "Kimi (Moonshot)",
+    description: "Moonshot AI / Kimi API",
+    envFields: [
+      { key: "ANTHROPIC_BASE_URL", label: "", fixed: "https://api.moonshot.cn/v1" },
+      { key: "ANTHROPIC_AUTH_TOKEN", label: "API Key", secret: true, required: true },
+      { key: "API_TIMEOUT_MS", label: "API Timeout (ms)", default: "600000" },
+      { key: "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", label: "", fixed: "1" },
+    ],
+    models: [KIMI_MODELS],
+  },
+  {
+    id: "zhipu",
+    name: "Zhipu AI (z.ai / GLM)",
+    description: "Zhipu AI / GLM / ChatGLM API",
+    envFields: [
+      { key: "ANTHROPIC_BASE_URL", label: "", fixed: "https://open.bigmodel.cn/api/paas/v4" },
+      { key: "ANTHROPIC_AUTH_TOKEN", label: "API Key", secret: true, required: true },
+      { key: "API_TIMEOUT_MS", label: "API Timeout (ms)", default: "600000" },
+      { key: "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", label: "", fixed: "1" },
+    ],
+    models: [ZHIPU_MODELS],
+  },
+  {
+    id: "ollama",
+    name: "Ollama (Local)",
+    description: "Local Ollama instance — no API key required",
+    envFields: [
+      { key: "ANTHROPIC_BASE_URL", label: "Ollama Base URL", default: "http://localhost:11434/v1" },
+      { key: "ANTHROPIC_AUTH_TOKEN", label: "", fixed: "ollama" },
+      { key: "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", label: "", fixed: "1" },
+    ],
+    models: [OLLAMA_MODELS],
+  },
+  {
+    id: "qwen",
+    name: "Qwen (Alibaba)",
+    description: "Alibaba Qwen / DashScope API",
+    envFields: [
+      { key: "ANTHROPIC_BASE_URL", label: "", fixed: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+      { key: "ANTHROPIC_AUTH_TOKEN", label: "API Key", secret: true, required: true },
+      { key: "API_TIMEOUT_MS", label: "API Timeout (ms)", default: "600000" },
+      { key: "ANTHROPIC_SMALL_FAST_MODEL", label: "Small/Fast Model", default: "qwen-turbo" },
+      { key: "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", label: "", fixed: "1" },
+    ],
+    models: [QWEN_MODELS],
   },
 ];
 

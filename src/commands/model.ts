@@ -1,8 +1,8 @@
 import readline from "node:readline";
-import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { buildSelectChoices } from "../lib/models.js";
+import { numberedSelect } from "../lib/prompts.js";
 
 export async function modelCommand(): Promise<void> {
   const store = await readStore();
@@ -44,7 +44,7 @@ export async function modelCommand(): Promise<void> {
   process.stdin.on("keypress", onKeypress);
 
   try {
-    const chosen = await select(
+    const chosen = await numberedSelect(
       {
         message: `Select a model (${store.active}):`,
         choices,

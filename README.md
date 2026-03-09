@@ -1,6 +1,6 @@
 # cc-manager (ccm)
 
-A lightweight CLI tool to configure [claude-code](https://docs.anthropic.com/en/docs/claude-code) for multiple providers (AWS Bedrock, Google Vertex AI, LiteLLM proxies, DeepSeek).
+A lightweight CLI tool to configure [claude-code](https://docs.anthropic.com/en/docs/claude-code) for multiple providers (AWS Bedrock, Google Vertex AI, LiteLLM proxies, DeepSeek, OpenRouter, Kimi, Zhipu/z.ai, Ollama, Qwen).
 
 Manage multiple provider configurations — each with its own API key, proxy URL, and model list — and switch between them instantly.
 
@@ -26,7 +26,10 @@ ccm use
 # 3. Pick a model from the active configuration
 ccm model
 
-# 4. Check your balance
+# 4. Check your current status
+ccm status
+
+# 5. Check your balance
 ccm usage
 ```
 
@@ -41,6 +44,13 @@ ccm usage
 | `ccm remove [name]` | Remove a configuration |
 | `ccm model` | Select model from active config |
 | `ccm usage` | Query API key balance/quota |
+| `ccm status` | Show current active configuration |
+| `ccm doctor` | Diagnose configuration issues |
+| `ccm clone [source] [newName]` | Clone a configuration |
+| `ccm export [name]` | Export configuration(s) to JSON |
+| `ccm import <file>` | Import configurations from JSON |
+| `ccm snapshot [name]` | Save current settings as a config |
+| `ccm completion [shell]` | Generate shell completion script |
 
 ---
 
@@ -48,7 +58,7 @@ ccm usage
 
 Interactively create a new named provider configuration.
 
-Guides you through provider selection (LiteLLM, Bedrock, Vertex, DeepSeek, or fully manual) and model configuration.
+Guides you through provider selection (LiteLLM, Bedrock, Vertex, DeepSeek, OpenRouter, Kimi, Zhipu, Ollama, Qwen, or fully manual) and model configuration.
 
 ```
 $ ccm add
@@ -112,6 +122,19 @@ Switched to "work-bedrock".
 Settings written to ~/.claude/settings.json
 ```
 
+Options:
+
+- **`-p, --previous`** — Switch back to the previous configuration (like `cd -`)
+- **`-l, --launch`** — Launch `claude` automatically after switching
+
+```bash
+# Quick switch back to the last used config
+ccm use -p
+
+# Switch and immediately start claude
+ccm use work-bedrock -l
+```
+
 Switching clears all ccm-managed env keys from `settings.json` before writing the new provider's values, preventing stale keys from leaking between configurations.
 
 ### `ccm edit [name]`
@@ -128,9 +151,13 @@ $ ccm edit
 > Name
   Environment fields
   Add models
+  Edit models
   Remove models
+  Set fast model
   Done
 ```
+
+Supports setting the **fast model** (`ANTHROPIC_SMALL_FAST_MODEL`) — choose from the config's model list, enter manually, or clear.
 
 Changes to the active configuration are automatically synced to `settings.json`.
 
@@ -182,9 +209,148 @@ $ ccm usage
   Expires:    2025-12-31 23:59:59
 ```
 
+### `ccm status`
+
+Show the current active configuration at a glance.
+
+```
+$ ccm status
+
+  Current Configuration
+  ─────────────────────────────
+  Name:      my-deepseek
+  Provider:  DeepSeek
+  URL:       https://api.deepseek.com/anthropic
+  Model:     deepseek-chat
+  Models:    3
+```
+
+Options:
+
+- **`--json`** — Output as JSON (for scripting)
+- **`--short`** — One-line output (for shell prompts)
+
+```bash
+# Use in scripts
+ccm status --json
+# → {"active":"my-deepseek","provider":"DeepSeek","model":"deepseek-chat",...}
+
+# Use in shell prompt (PS1)
+ccm status --short
+# → my-deepseek | DeepSeek | deepseek-chat
+```
+
+### `ccm doctor`
+
+Diagnose configuration issues — checks file integrity, validates store data, verifies required fields, and confirms settings sync.
+
+```
+$ ccm doctor
+
+  ccm doctor
+  ─────────────────────────────
+
+  Environment
+    ccm version:  0.3.0
+    Node.js:      v22.0.0
+    Platform:     darwin arm64
+
+  Files
+    ✓ ccm.json
+    ✓ settings.json
+
+  Store
+    ✓ 3 configuration(s) found
+    ✓ Active: "my-deepseek"
+
+  Active Configuration
+    ✓ API Key (ANTHROPIC_AUTH_TOKEN)
+    ✓ 3 model(s) configured
+    ✓ Active model "deepseek-chat" is in model list
+    ✓ settings.json in sync with active config
+
+  All checks passed!
+```
+
+Use `--test-api` to also test API connectivity for the active config.
+
+### `ccm clone [source] [newName]`
+
+Clone (deep-copy) a configuration. Alias: `ccm cp`. Useful for creating variations of the same provider with different keys or model lists.
+
+```bash
+ccm clone my-deepseek my-deepseek-alt
+# → Configuration "my-deepseek" cloned as "my-deepseek-alt".
+```
+
+### `ccm export [name]`
+
+Export one or all configurations to a JSON file for backup or sharing.
+
+```bash
+# Export all configurations
+ccm export -o backup.json
+
+# Export a single configuration with secrets masked
+ccm export my-deepseek --mask-secrets -o share.json
+```
+
+### `ccm import <file>`
+
+Import configurations from a previously exported JSON file. Handles name conflicts with overwrite/rename/skip options.
+
+```bash
+ccm import backup.json
+# → Imported 3 configuration(s).
+```
+
+### `ccm snapshot [name]`
+
+Capture the current `settings.json` environment as a new ccm configuration. Useful for saving manual changes you've made outside of ccm.
+
+```bash
+ccm snapshot my-current-setup
+# → Snapshot saved as "my-current-setup".
+# → Detected provider: litellm
+# → Captured 5 env var(s), 1 model(s).
+```
+
+### `ccm completion [shell]`
+
+Generate shell completion scripts for bash, zsh, or fish. Auto-detects your shell if not specified.
+
+```bash
+# Add to ~/.zshrc
+eval "$(ccm completion zsh)"
+
+# Add to ~/.bashrc
+eval "$(ccm completion bash)"
+
+# Save for fish
+ccm completion fish > ~/.config/fish/completions/ccm.fish
+```
+
+## Provider Templates
+
+ccm ships with 9 built-in provider templates, each pre-configured with the correct environment variables and curated model lists:
+
+| Template | Description |
+|----------|-------------|
+| **LiteLLM Proxy** | Connect through a LiteLLM proxy server (Bedrock mode) |
+| **AWS Bedrock** | Direct AWS Bedrock access |
+| **Google Vertex AI** | Google Cloud Vertex AI (uses gcloud ADC) |
+| **DeepSeek** | DeepSeek API (native Anthropic format) |
+| **OpenRouter** | OpenRouter API — access 320+ models from all providers |
+| **Kimi (Moonshot)** | Moonshot AI / Kimi API |
+| **Zhipu AI (z.ai / GLM)** | Zhipu AI / GLM / ChatGLM API |
+| **Ollama (Local)** | Local Ollama instance — no API key required |
+| **Qwen (Alibaba)** | Alibaba Qwen / DashScope API |
+
+You can also use **Fully manual** mode to configure any provider with arbitrary environment variables.
+
 ## Built-in Models
 
-When adding or editing a configuration, you can select from 42+ built-in models across 5 vendor groups, or add custom model IDs.
+When adding or editing a configuration, you can select from 42+ built-in models across 5 vendor groups (used for Bedrock/Vertex/manual configs), or choose from provider-specific curated lists (e.g., OpenRouter, DeepSeek, Ollama), or add custom model IDs.
 
 <details>
 <summary>Full built-in model list</summary>
@@ -258,14 +424,82 @@ When adding or editing a configuration, you can select from 42+ built-in models 
 
 </details>
 
+<details>
+<summary>Provider-specific model lists</summary>
+
+**OpenRouter (Popular)**
+
+| Display Name | Model ID |
+| --- | --- |
+| Claude Opus 4 | `anthropic/claude-opus-4` |
+| Claude Sonnet 4 | `anthropic/claude-sonnet-4` |
+| Claude Haiku 3.5 | `anthropic/claude-3.5-haiku` |
+| GPT-4o | `openai/gpt-4o` |
+| Gemini 2.5 Pro | `google/gemini-2.5-pro` |
+| DeepSeek R1 | `deepseek/deepseek-r1` |
+| DeepSeek V3 | `deepseek/deepseek-chat` |
+| Llama 4 Maverick | `meta-llama/llama-4-maverick` |
+| Qwen3 235B | `qwen/qwen3-235b` |
+
+**DeepSeek**
+
+| Display Name | Model ID |
+| --- | --- |
+| DeepSeek-V3 | `deepseek-chat` |
+| DeepSeek-R1 | `deepseek-reasoner` |
+| DeepSeek-Coder-V2 | `deepseek-coder` |
+
+**Kimi (Moonshot)**
+
+| Display Name | Model ID |
+| --- | --- |
+| Moonshot v1 128K | `moonshot-v1-128k` |
+| Moonshot v1 32K | `moonshot-v1-32k` |
+| Moonshot v1 8K | `moonshot-v1-8k` |
+| Kimi K2 | `kimi-k2` |
+
+**Zhipu AI (GLM)**
+
+| Display Name | Model ID |
+| --- | --- |
+| GLM-4-Plus | `glm-4-plus` |
+| GLM-4-Long | `glm-4-long` |
+| GLM-4-Flash | `glm-4-flash` |
+| GLM-4-AirX | `glm-4-airx` |
+| CodeGeeX-4 | `codegeex-4` |
+
+**Ollama (Local)**
+
+| Display Name | Model ID |
+| --- | --- |
+| Llama 3.1 8B | `llama3.1:8b` |
+| Llama 3.1 70B | `llama3.1:70b` |
+| CodeLlama 34B | `codellama:34b` |
+| Mistral 7B | `mistral:7b` |
+| DeepSeek Coder V2 | `deepseek-coder-v2:latest` |
+| Qwen2.5 Coder 32B | `qwen2.5-coder:32b` |
+
+**Qwen (Alibaba)**
+
+| Display Name | Model ID |
+| --- | --- |
+| Qwen-Max | `qwen-max` |
+| Qwen-Plus | `qwen-plus` |
+| Qwen-Turbo | `qwen-turbo` |
+| Qwen-Long | `qwen-long` |
+| Qwen-Coder-Plus | `qwen-coder-plus` |
+| Qwen-Coder-Turbo | `qwen-coder-turbo` |
+
+</details>
+
 ## How It Works
 
 `ccm` manages two files:
 
-- **`~/.claude/ccm.json`** — stores all named provider configurations (name, env vars, model list) and which one is active
-- **`~/.claude/settings.json`** — the configuration file used by `claude-code`; ccm only modifies the `env` object and preserves all other fields
+- **`~/.claude/ccm.json`** — stores all named provider configurations (name, env vars, model list), which one is active, and the previous active config for quick switch-back
+- **`~/.claude/settings.json`** — the configuration file used by `claude-code`; ccm only modifies the `env` object and preserves all other fields. A backup (`settings.json.bak`) is created automatically before every write.
 
-When you switch configurations with `ccm use`, ccm first clears all its managed env keys from `settings.json`, then writes the new provider's values. The managed key list is dynamically derived from all provider templates and includes keys like `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH`, `CLAUDE_CODE_USE_VERTEX`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `AWS_REGION`, `ANTHROPIC_MODEL`, `API_TIMEOUT_MS`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, etc. This prevents stale keys from leaking between configurations.
+When you switch configurations with `ccm use`, ccm first clears all its managed env keys from `settings.json`, then writes the new provider's values. The managed key list is dynamically derived from all provider templates and includes keys like `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH`, `CLAUDE_CODE_USE_VERTEX`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `AWS_REGION`, `ANTHROPIC_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL`, `API_TIMEOUT_MS`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, etc. This prevents stale keys from leaking between configurations.
 
 ## License
 

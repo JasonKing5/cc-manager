@@ -1,4 +1,4 @@
-import { select } from "@inquirer/prompts";
+import { select, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import { findTemplate } from "./providers.js";
 import type { CcmStore } from "./store.js";
@@ -30,24 +30,60 @@ export function buildConfigChoices(
 }
 
 /**
- * Confirm prompt using select with arrow-key navigation.
- * Focused item: bold, unfocused item: dim gray.
+ * Numbered select — wraps @inquirer/prompts select with:
+ * - Auto-numbered choices (Separators are not numbered)
+ * - `›` prefix on focused item via theme
+ * - Bottom help hint via theme
+ */
+export async function numberedSelect<T>(
+  config: Parameters<typeof select<T>>[0],
+  opts?: Parameters<typeof select<T>>[1],
+): Promise<T> {
+  let idx = 0;
+  const numberedChoices = (config.choices as any[]).map((c: any) => {
+    if (c instanceof Separator || c.type === "separator") return c;
+    idx++;
+    return {
+      ...c,
+      name: `${idx}. ${c.name ?? c.value}`,
+    };
+  });
+
+  return select(
+    {
+      ...config,
+      choices: numberedChoices,
+      theme: {
+        ...((config as any).theme ?? {}),
+        style: {
+          ...((config as any).theme?.style ?? {}),
+          highlight: (text: string) => chalk.bold(text),
+        },
+        prefix: {
+          idle: "›",
+          done: chalk.green("✔"),
+        },
+        helpMode: "always" as const,
+      },
+    },
+    opts,
+  );
+}
+
+/**
+ * Confirm prompt using numbered select.
+ * Shows: › 1. Yes / 2. No, cancel (Esc)
  */
 export async function styledConfirm(
   message: string,
   defaultYes = true,
 ): Promise<boolean> {
-  return select({
-    message: `${message} ${chalk.dim("(↑↓ to switch, Enter to confirm)")}`,
+  return numberedSelect({
+    message,
     choices: [
       { name: "Yes", value: true },
-      { name: "No", value: false },
+      { name: "No, cancel (Esc)", value: false },
     ],
     default: defaultYes,
-    theme: {
-      style: {
-        highlight: (text: string) => chalk.bold(text),
-      },
-    },
   });
 }

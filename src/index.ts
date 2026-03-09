@@ -4,11 +4,18 @@ import { createRequire } from "node:module";
 import { Command } from "commander";
 import { addCommand } from "./commands/add.js";
 import { listCommand } from "./commands/list.js";
-import { useCommand } from "./commands/use.js";
+import { registerUseCommand } from "./commands/use.js";
 import { editCommand } from "./commands/edit.js";
 import { removeCommand } from "./commands/remove.js";
 import { modelCommand } from "./commands/model.js";
 import { usageCommand } from "./commands/usage.js";
+import { registerStatusCommand } from "./commands/status.js";
+import { registerDoctorCommand } from "./commands/doctor.js";
+import { cloneCommand } from "./commands/clone.js";
+import { registerExportCommand } from "./commands/export.js";
+import { importCommand } from "./commands/import.js";
+import { snapshotCommand } from "./commands/snapshot.js";
+import { registerCompletionCommand } from "./commands/completion.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -17,7 +24,7 @@ const program = new Command();
 
 program
   .name("ccm")
-  .description("CLI tool to configure claude-code for Bedrock/LiteLLM services")
+  .description("CLI tool to manage multiple provider configurations for claude-code")
   .version(pkg.version);
 
 program
@@ -31,10 +38,7 @@ program
   .description("List all configurations")
   .action(listCommand);
 
-program
-  .command("use [name]")
-  .description("Switch active configuration")
-  .action(useCommand);
+registerUseCommand(program);
 
 program
   .command("edit [name]")
@@ -57,6 +61,29 @@ program
   .description("Query current API key balance and quota")
   .action(usageCommand);
 
+registerStatusCommand(program);
+registerDoctorCommand(program);
+
+program
+  .command("clone [source] [newName]")
+  .alias("cp")
+  .description("Clone a configuration")
+  .action(cloneCommand);
+
+registerExportCommand(program);
+
+program
+  .command("import <file>")
+  .description("Import configurations from a JSON file")
+  .action(importCommand);
+
+program
+  .command("snapshot [name]")
+  .description("Save current settings.json as a new configuration")
+  .action(snapshotCommand);
+
+registerCompletionCommand(program);
+
 // Gracefully handle Ctrl+C during interactive prompts
 process.on("uncaughtException", (err) => {
   if (
@@ -69,5 +96,22 @@ process.on("uncaughtException", (err) => {
   console.error(err);
   process.exit(1);
 });
+
+// Prefix matching: auto-resolve unambiguous command prefixes
+const userArgs = process.argv.slice(2);
+const firstArg = userArgs[0];
+if (firstArg && !firstArg.startsWith("-")) {
+  const allNames: string[] = [];
+  for (const cmd of program.commands) {
+    allNames.push(cmd.name(), ...cmd.aliases());
+  }
+  const exact = allNames.includes(firstArg);
+  if (!exact) {
+    const matches = allNames.filter((n) => n.startsWith(firstArg));
+    if (matches.length === 1) {
+      process.argv = [process.argv[0], process.argv[1], matches[0], ...userArgs.slice(1)];
+    }
+  }
+}
 
 program.parse();

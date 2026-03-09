@@ -16,6 +16,7 @@ export interface ProviderConfig {
 
 export interface CcmStore {
   active: string | null;
+  previousActive: string | null;
   providers: Record<string, ProviderConfig>;
 }
 
@@ -27,7 +28,7 @@ const CCM_ENV_KEYS: string[] = [
 ];
 
 function defaultStore(): CcmStore {
-  return { active: null, providers: {} };
+  return { active: null, previousActive: null, providers: {} };
 }
 
 export async function readStore(): Promise<CcmStore> {
@@ -44,6 +45,7 @@ export async function readStore(): Promise<CcmStore> {
     }
     return {
       active: typeof parsed.active === "string" ? parsed.active : null,
+      previousActive: typeof parsed.previousActive === "string" ? parsed.previousActive : null,
       providers: parsed.providers,
     };
   } catch (err: any) {

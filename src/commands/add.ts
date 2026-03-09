@@ -1,26 +1,17 @@
-import { input, password, checkbox, select, Separator } from "@inquirer/prompts";
+import { input, password, checkbox, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
 import { MODEL_GROUPS, buildCheckboxChoices } from "../lib/models.js";
-import { PROVIDER_TEMPLATES, type ProviderTemplate, type ProviderEnvField } from "../lib/providers.js";
-import { styledConfirm } from "../lib/prompts.js";
+import { PROVIDER_TEMPLATES, type ProviderEnvField } from "../lib/providers.js";
+import { styledConfirm, numberedSelect } from "../lib/prompts.js";
+import { promptCustomModels } from "./edit.js";
 
 export async function addCommand(): Promise<void> {
   const store = await readStore();
 
-  // 1. Name
-  const name = await input({
-    message: "Configuration name:",
-    validate: (val) => {
-      if (!val.trim()) return "Name cannot be empty.";
-      if (store.providers[val.trim()]) return `"${val.trim()}" already exists.`;
-      return true;
-    },
-  });
-
-  // 2. Provider selection
-  const providerId = await select({
+  // 1. Provider selection (first, so we can derive a smart default name)
+  const providerId = await numberedSelect({
     message: "How do you want to set up this configuration?",
     choices: [
       new Separator(chalk.bold("── Provider Templates ──")),
@@ -39,10 +30,9 @@ export async function addCommand(): Promise<void> {
   let templateId: string | undefined;
   let modelGroups = MODEL_GROUPS;
 
+  // 2. Env fields (before name, so manual mode URL can inform default name)
   if (providerId === "__manual__") {
-    // Manual mode: prompt arbitrary key-value pairs
     env = await promptManualEnv();
-    // All model groups
   } else {
     const template = PROVIDER_TEMPLATES.find((t) => t.id === providerId)!;
     templateId = template.id;
@@ -52,42 +42,32 @@ export async function addCommand(): Promise<void> {
     }
   }
 
-  // 3. Models
-  const modelMode = await select({
-    message: "How do you want to configure models?",
-    choices: [
-      { name: "Select from built-in list", value: "builtin" },
-      { name: "Enter model IDs (comma-separated)", value: "paste" },
-    ],
+  // 3. Name (with smart default based on provider/env)
+  const defaultName = generateDefaultName(store.providers, templateId, env);
+  const name = await input({
+    message: "Configuration name:",
+    default: defaultName,
+    validate: (val) => {
+      if (!val.trim()) return "Name cannot be empty.";
+      if (store.providers[val.trim()]) return `"${val.trim()}" already exists.`;
+      return true;
+    },
   });
 
-  if (modelMode === "builtin") {
-    const selectedValues = await checkbox({
-      message: "Select models (space to toggle, enter to confirm):",
-      choices: buildCheckboxChoices(undefined, modelGroups),
-      pageSize: 20,
-    });
+  // 4. Models: checkbox then inline custom input
+  const selectedValues = await checkbox({
+    message: "Select models (space to toggle, enter to confirm):",
+    choices: buildCheckboxChoices(undefined, modelGroups),
+    pageSize: 20,
+  });
 
-    models = selectedValues.map((v) => {
-      const label = v.replace(/^(us\.|gemini\/|vertex_ai\/)/, "");
-      return { name: label, value: v };
-    });
+  models = selectedValues.map((v) => {
+    const label = v.replace(/^(us\.|gemini\/|vertex_ai\/)/, "");
+    return { name: label, value: v };
+  });
 
-    const addCustom = await styledConfirm("Add custom models?", false);
-    if (addCustom) {
-      models.push(...(await promptCustomModels()));
-    }
-  } else {
-    const raw = await input({
-      message: "Model IDs (comma-separated):",
-    });
-    for (const part of raw.split(/[,]+/)) {
-      const trimmed = part.trim();
-      if (trimmed) {
-        models.push({ name: trimmed, value: trimmed });
-      }
-    }
-  }
+  // Custom model input — empty or Esc to finish
+  models.push(...(await promptCustomModels()));
 
   if (models.length === 0) {
     console.log(chalk.yellow("Warning: No models selected. You can add models later with `ccm edit`."));
@@ -122,7 +102,7 @@ export async function addCommand(): Promise<void> {
 }
 
 /** Prompt the user for env fields defined by a provider template */
-export async function promptEnvFields(fields: ProviderEnvField[]): Promise<Record<string, string>> {
+async function promptEnvFields(fields: ProviderEnvField[]): Promise<Record<string, string>> {
   const env: Record<string, string> = {};
   for (const field of fields) {
     if (field.fixed !== undefined) {
@@ -173,18 +153,33 @@ async function promptManualEnv(): Promise<Record<string, string>> {
   return env;
 }
 
-async function promptCustomModels(): Promise<{ name: string; value: string }[]> {
-  const models: { name: string; value: string }[] = [];
-  let more = true;
-  while (more) {
-    const value = await input({ message: "Model ID:" });
-    if (!value.trim()) break;
-    const label = await input({
-      message: "Display name:",
-      default: value.trim(),
-    });
-    models.push({ name: label.trim(), value: value.trim() });
-    more = await styledConfirm("Add another?", false);
+function generateDefaultName(
+  providers: Record<string, unknown>,
+  templateId: string | undefined,
+  env: Record<string, string>,
+): string {
+  let base: string;
+  if (templateId) {
+    base = templateId;
+  } else {
+    // Manual mode: try to extract domain from ANTHROPIC_BASE_URL
+    const url = env.ANTHROPIC_BASE_URL;
+    if (url) {
+      try {
+        base = new URL(url).hostname.replace(/^www\./, "").split(".")[0];
+      } catch {
+        base = "manual";
+      }
+    } else {
+      base = "manual";
+    }
   }
-  return models;
+
+  if (!providers[base]) return base;
+  // Append numeric suffix to avoid collision
+  for (let i = 2; ; i++) {
+    const candidate = `${base}-${i}`;
+    if (!providers[candidate]) return candidate;
+  }
 }
+
