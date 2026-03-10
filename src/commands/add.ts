@@ -2,8 +2,9 @@ import { input, password, checkbox, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
-import { MODEL_GROUPS, buildCheckboxChoices } from "../lib/models.js";
+import { MODEL_GROUPS, buildCheckboxChoices, humanizeModelId } from "../lib/models.js";
 import { PROVIDER_TEMPLATES, type ProviderEnvField } from "../lib/providers.js";
+import { fetchLiteLLMModels } from "../lib/fetch-models.js";
 import { styledConfirm, numberedSelect } from "../lib/prompts.js";
 import { promptCustomModels } from "./edit.js";
 
@@ -42,6 +43,25 @@ export async function addCommand(): Promise<void> {
     }
   }
 
+  // 2b. Dynamic models: fetch from API if supported
+  if (templateId) {
+    const tpl = PROVIDER_TEMPLATES.find((t) => t.id === templateId);
+    if (tpl?.dynamicModels) {
+      try {
+        console.log(chalk.dim("Fetching available models from API..."));
+        const fetched = await fetchLiteLLMModels(env);
+        if (fetched.length > 0) {
+          modelGroups = fetched;
+        } else {
+          console.log(chalk.yellow("No models returned from API. Falling back to manual input."));
+        }
+      } catch (err) {
+        console.log(chalk.yellow(`Could not fetch models: ${(err as Error).message}`));
+        console.log(chalk.dim("You can add models manually."));
+      }
+    }
+  }
+
   // 3. Name (with smart default based on provider/env)
   const defaultName = generateDefaultName(store.providers, templateId, env);
   const name = await input({
@@ -62,8 +82,8 @@ export async function addCommand(): Promise<void> {
   });
 
   models = selectedValues.map((v) => {
-    const label = v.replace(/^(us\.|gemini\/|vertex_ai\/)/, "");
-    return { name: label, value: v };
+    const found = modelGroups.flatMap((g) => g.models).find((m) => m.value === v);
+    return { name: found?.name ?? humanizeModelId(v), value: v };
   });
 
   // Custom model input — empty or Esc to finish

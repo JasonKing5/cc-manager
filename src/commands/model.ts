@@ -29,7 +29,11 @@ export async function modelCommand(): Promise<void> {
 
   const currentModel = provider.env.ANTHROPIC_MODEL;
   if (currentModel) {
-    console.log(chalk.dim(`Current model: ${currentModel}`));
+    const currentModelChoice = provider.models.find((m) => m.value === currentModel);
+    const displayName = currentModelChoice
+      ? `${currentModelChoice.name} (${currentModel})`
+      : currentModel;
+    console.log(chalk.dim(`Current model: ${displayName}`));
   }
 
   const choices = buildSelectChoices(provider.models, currentModel);
@@ -61,7 +65,11 @@ export async function modelCommand(): Promise<void> {
     // Update settings.json (clears stale keys first)
     await applyToSettings(provider.env);
 
-    console.log(chalk.green(`Model switched to ${chalk.bold(chosen)}`));
+    const chosenModelChoice = provider.models.find((m) => m.value === chosen);
+    const displayName = chosenModelChoice
+      ? `${chosenModelChoice.name} (${chosen})`
+      : chosen;
+    console.log(chalk.green(`Model switched to ${chalk.bold(displayName)}`));
   } catch (err) {
     if (
       err instanceof Error &&

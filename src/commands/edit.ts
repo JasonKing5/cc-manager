@@ -2,8 +2,9 @@ import { input, password, checkbox, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readStore, writeStore, applyToSettings } from "../lib/store.js";
 import { SETTINGS_PATH } from "../lib/settings.js";
-import { MODEL_GROUPS, buildCheckboxChoices, type ModelGroup } from "../lib/models.js";
+import { MODEL_GROUPS, buildCheckboxChoices, humanizeModelId, type ModelGroup } from "../lib/models.js";
 import { findTemplate } from "../lib/providers.js";
+import { fetchLiteLLMModels } from "../lib/fetch-models.js";
 import { buildConfigChoices, numberedSelect, styledConfirm } from "../lib/prompts.js";
 
 export async function editCommand(name?: string): Promise<void> {
@@ -160,7 +161,18 @@ export async function editCommand(name?: string): Promise<void> {
         }
 
         case "models": {
-          const modelGroups = template?.models.length ? template.models : MODEL_GROUPS;
+          let modelGroups: ModelGroup[];
+          if (template?.dynamicModels) {
+            try {
+              console.log(chalk.dim("Fetching available models from API..."));
+              const fetched = await fetchLiteLLMModels(provider.env);
+              modelGroups = fetched.length > 0 ? fetched : [];
+            } catch {
+              modelGroups = [];
+            }
+          } else {
+            modelGroups = template?.models.length ? template.models : MODEL_GROUPS;
+          }
           const currentModelValues = new Set(provider.models.map((m) => m.value));
 
           const builtinValues = new Set(modelGroups.flatMap((g) => g.models.map((m) => m.value)));
@@ -183,8 +195,8 @@ export async function editCommand(name?: string): Promise<void> {
           provider.models = selected.map((v) => {
             const existing = provider.models.find((m) => m.value === v);
             if (existing) return { name: existing.name, value: existing.value };
-            const label = v.replace(/^(us\.|gemini\/|vertex_ai\/)/, "");
-            return { name: label, value: v };
+            const found = choiceGroups.flatMap((g) => g.models).find((m) => m.value === v);
+            return { name: found?.name ?? humanizeModelId(v), value: v };
           });
 
           // Custom model input
@@ -212,7 +224,7 @@ export async function editCommand(name?: string): Promise<void> {
           const currentFast = provider.env.ANTHROPIC_SMALL_FAST_MODEL;
           const fastChoices: { name: string; value: string }[] = provider.models.map(
             (m) => ({
-              name: `${m.name.padEnd(30)} ${chalk.dim(m.value)}${m.value === currentFast ? chalk.cyan(" (current)") : ""}`,
+              name: `${m.name} ${chalk.dim(`(${m.value})`)}${m.value === currentFast ? chalk.cyan(" ← current") : ""}`,
               value: m.value,
             }),
           );
@@ -274,7 +286,7 @@ export async function promptCustomModels(): Promise<{ name: string; value: strin
     if (!raw.trim()) break;
 
     const id = raw.trim();
-    const defaultName = id.replace(/^(us\.|gemini\/|vertex_ai\/)/, "");
+    const defaultName = humanizeModelId(id);
 
     let displayName: string;
     try {
