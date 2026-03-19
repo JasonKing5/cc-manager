@@ -8,7 +8,7 @@ import { registerUseCommand } from "./commands/use.js";
 import { editCommand } from "./commands/edit.js";
 import { removeCommand } from "./commands/remove.js";
 import { modelCommand } from "./commands/model.js";
-import { usageCommand } from "./commands/usage.js";
+import { registerUsageCommand } from "./commands/usage.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { cloneCommand } from "./commands/clone.js";
@@ -56,10 +56,7 @@ program
   .description("Select a model from active configuration")
   .action(modelCommand);
 
-program
-  .command("usage")
-  .description("Query current API key balance and quota")
-  .action(usageCommand);
+registerUsageCommand(program);
 
 registerStatusCommand(program);
 registerDoctorCommand(program);

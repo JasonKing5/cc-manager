@@ -1,15 +1,42 @@
 import chalk from "chalk";
+import type { Command } from "commander";
 import { readSettings } from "../lib/settings.js";
 import { readStore } from "../lib/store.js";
+import { recordEntry, displayHistory } from "../lib/usage-history.js";
 
-export async function usageCommand(): Promise<void> {
+export function registerUsageCommand(program: Command): void {
+  program
+    .command("usage")
+    .description("Query current API key balance and quota")
+    .option("-H, --history", "Show usage history")
+    .option("-l, --limit <n>", "Number of history entries to show", "7")
+    .action(usageCommand);
+}
+
+async function usageCommand(opts: {
+  history?: boolean;
+  limit?: string;
+}): Promise<void> {
   const store = await readStore();
+  const configName = store.active;
+
+  if (opts.history) {
+    if (!configName) {
+      console.log(
+        chalk.yellow("No active configuration. Run `ccm use` first."),
+      );
+      process.exit(1);
+    }
+    await displayHistory(configName, parseInt(opts.limit ?? "7", 10));
+    return;
+  }
+
   let token: string | undefined;
   let baseUrl: string | undefined;
 
   // Try active provider first, fall back to settings.json
-  if (store.active && store.providers[store.active]) {
-    const provider = store.providers[store.active];
+  if (configName && store.providers[configName]) {
+    const provider = store.providers[configName];
     token = provider.env.ANTHROPIC_AUTH_TOKEN;
     baseUrl = provider.env.ANTHROPIC_BEDROCK_BASE_URL;
   } else {
@@ -28,7 +55,8 @@ export async function usageCommand(): Promise<void> {
   }
 
   // Derive API base from proxy URL (strip /bedrock suffix)
-  const apiBase = baseUrl?.replace(/\/bedrock\/?$/, "") ?? "https://www.litellm.org";
+  const apiBase =
+    baseUrl?.replace(/\/bedrock\/?$/, "") ?? "https://www.litellm.org";
 
   let data: any;
   try {
@@ -65,9 +93,9 @@ export async function usageCommand(): Promise<void> {
 
   console.log("");
   console.log(chalk.bold("  Usage Summary"));
-  console.log(chalk.dim("  ─────────────────────────────"));
-  if (store.active) {
-    console.log(`  Config:    ${chalk.cyan(store.active)}`);
+  console.log(chalk.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+  if (configName) {
+    console.log(`  Config:    ${chalk.cyan(configName)}`);
   }
   console.log(`  Alias:      ${chalk.cyan(alias)}`);
   console.log(`  Spent:      ${chalk.yellow(`$${spent.toFixed(2)}`)}`);
@@ -75,4 +103,17 @@ export async function usageCommand(): Promise<void> {
   console.log(`  Remaining:  ${chalk.green(remainingStr)}`);
   console.log(`  Expires:    ${chalk.magenta(expiresStr)}`);
   console.log("");
+
+  // Record to history (silently)
+  if (configName) {
+    try {
+      await recordEntry(
+        configName,
+        spent,
+        maxBudget != null ? Number(maxBudget) : null,
+      );
+    } catch {
+      // Don't let history write failure affect main output
+    }
+  }
 }
