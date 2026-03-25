@@ -71,7 +71,17 @@ export async function displayHistory(
     return;
   }
 
-  const shown = entries.slice(-limit);
+  // Limit applies to days, not raw entries
+  const allGrouped = new Map<string, UsageEntry[]>();
+  for (const e of entries) {
+    const day = e.timestamp.slice(0, 10);
+    const group = allGrouped.get(day);
+    if (group) group.push(e);
+    else allGrouped.set(day, [e]);
+  }
+  const allDayKeys = [...allGrouped.keys()];
+  const selectedDays = new Set(allDayKeys.slice(-limit));
+  const shown = entries.filter((e) => selectedDays.has(e.timestamp.slice(0, 10)));
 
   // Group entries by date
   const grouped = new Map<string, UsageEntry[]>();
@@ -101,6 +111,7 @@ export async function displayHistory(
     ),
   );
 
+  const dailySpends: number[] = [];
   for (let di = 0; di < dayKeys.length; di++) {
     const day = dayKeys[di];
     const group = grouped.get(day)!;
@@ -110,15 +121,19 @@ export async function displayHistory(
       console.log(chalk.dim(`  ${"".padEnd(18)}${"".padEnd(11)}${"".padEnd(12)}${"".padEnd(11)}${"- ".repeat(5)}`));
     }
 
-    // Inter-day delta (between last entry of previous day and last entry of this day)
-    let dailyDeltaStr = chalk.dim("\u2014");
+    // Daily delta: inter-day for di>0, intra-day for di===0 (if multiple records)
+    let dailyDelta: number | null = null;
     if (di > 0) {
       const prevLast = dailyLast.get(dayKeys[di - 1])!;
-      const curLast = group[group.length - 1];
-      const dd = curLast.spend - prevLast.spend;
-      const sign = dd >= 0 ? "+" : "";
-      dailyDeltaStr = (dd >= 0 ? chalk.red : chalk.green)(
-        `${sign}$${dd.toFixed(2)}`,
+      dailyDelta = group[group.length - 1].spend - prevLast.spend;
+    } else if (group.length > 1) {
+      dailyDelta = group[group.length - 1].spend - group[0].spend;
+    }
+    let dailyDeltaStr = chalk.dim("\u2014");
+    if (dailyDelta != null) {
+      const sign = dailyDelta >= 0 ? "+" : "";
+      dailyDeltaStr = (dailyDelta >= 0 ? chalk.red : chalk.green)(
+        `${sign}$${dailyDelta.toFixed(2)}`,
       );
     }
 
@@ -149,6 +164,7 @@ export async function displayHistory(
         `  ${dateStr.padEnd(18)}${padColored(chalk.yellow(spendStr), 11)}${padColored(chalk.green(remainStr), 12)}${padColored(deltaStr, 11)}${dailyCol}`,
       );
     }
+    dailySpends.push(dailyDelta ?? 0);
   }
 
   console.log(chalk.dim(`  ${sep}`));
@@ -172,21 +188,17 @@ export async function displayHistory(
 
   // Chart uses daily last values (only with 3+ days)
   if (daily.length >= 3) {
-    renderChart(daily);
+    renderChart(daily, dailySpends);
   }
 
   console.log("");
 }
 
-function renderChart(entries: UsageEntry[]): void {
-  // Compute daily deltas (skip first entry — no previous day)
-  const deltas: { delta: number; entry: UsageEntry }[] = [];
-  for (let i = 1; i < entries.length; i++) {
-    deltas.push({
-      delta: entries[i].spend - entries[i - 1].spend,
-      entry: entries[i],
-    });
-  }
+function renderChart(entries: UsageEntry[], dailySpends: number[]): void {
+  const deltas: { delta: number; entry: UsageEntry }[] = entries.map((e, i) => ({
+    delta: dailySpends[i],
+    entry: e,
+  }));
   if (deltas.length === 0) return;
 
   const values = deltas.map((d) => d.delta);
@@ -202,9 +214,9 @@ function renderChart(entries: UsageEntry[]): void {
   console.log(chalk.bold("  Daily Spend:"));
   console.log("");
 
-  // Calculate bar heights (minimum 1 so every day is visible)
+  // Calculate bar heights (0 for $0 values, minimum 1 for positive values)
   const barHeights = values.map((v) =>
-    Math.max(1, Math.round(((v - min) / range) * (height - 1)) + 1),
+    v <= 0 ? 0 : Math.max(1, Math.round(((v - min) / range) * (height - 1)) + 1),
   );
 
   // Render rows top-to-bottom

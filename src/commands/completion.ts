@@ -13,7 +13,7 @@ _ccm_completions() {
   local cur="\${COMP_WORDS[COMP_CWORD]}"
   local prev="\${COMP_WORDS[COMP_CWORD-1]}"
 
-  local commands="add list ls use edit remove rm model usage status doctor clone cp export import snapshot completion help"
+  local commands="add list ls use edit remove rm model usage status doctor clone cp export import snapshot completion perm plugin mode help"
 
   case "\${prev}" in
     ccm)
@@ -30,6 +30,10 @@ _ccm_completions() {
       ;;
     import)
       COMPREPLY=( $(compgen -f -X '!*.json' -- "\${cur}") )
+      return 0
+      ;;
+    perm)
+      COMPREPLY=( $(compgen -W "init ls list audit clean" -- "\${cur}") )
       return 0
       ;;
   esac
@@ -62,6 +66,9 @@ _ccm() {
     'import:Import configurations from a JSON file'
     'snapshot:Save current settings as a new configuration'
     'completion:Generate shell completion script'
+    'perm:Permission management'
+    'plugin:Manage Claude Code plugins'
+    'mode:Switch execution mode'
     'help:Display help for command'
   )
 
@@ -100,6 +107,17 @@ _ccm() {
         import)
           _arguments '1:file:_files -g "*.json"'
           ;;
+        perm)
+          local -a perm_commands
+          perm_commands=(
+            'init:Initialize project permissions'
+            'ls:List permissions'
+            'list:List permissions'
+            'audit:Audit permissions'
+            'clean:Clean up permissions'
+          )
+          _describe -t perm_commands 'perm subcommand' perm_commands
+          ;;
       esac
       ;;
   esac
@@ -128,6 +146,9 @@ complete -c ccm -n '__fish_use_subcommand' -a export -d 'Export configurations'
 complete -c ccm -n '__fish_use_subcommand' -a import -d 'Import configurations'
 complete -c ccm -n '__fish_use_subcommand' -a snapshot -d 'Save current settings as configuration'
 complete -c ccm -n '__fish_use_subcommand' -a completion -d 'Generate shell completion script'
+complete -c ccm -n '__fish_use_subcommand' -a perm -d 'Permission management'
+complete -c ccm -n '__fish_use_subcommand' -a plugin -d 'Manage Claude Code plugins'
+complete -c ccm -n '__fish_use_subcommand' -a mode -d 'Switch execution mode'
 
 # use options
 complete -c ccm -n '__fish_seen_subcommand_from use' -s p -l previous -d 'Switch to previous configuration'
@@ -146,6 +167,12 @@ complete -c ccm -n '__fish_seen_subcommand_from export' -l mask-secrets -d 'Mask
 
 # import - accept json files
 complete -c ccm -n '__fish_seen_subcommand_from import' -F
+
+# perm subcommands
+complete -c ccm -n '__fish_seen_subcommand_from perm' -a init -d 'Initialize project permissions'
+complete -c ccm -n '__fish_seen_subcommand_from perm' -a ls -d 'List permissions'
+complete -c ccm -n '__fish_seen_subcommand_from perm' -a audit -d 'Audit permissions'
+complete -c ccm -n '__fish_seen_subcommand_from perm' -a clean -d 'Clean up permissions'
 `;
 
 async function completionCommand(shell?: string): Promise<void> {

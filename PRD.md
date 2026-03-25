@@ -180,3 +180,111 @@ ccm remove     # 删除配置
 ccm model      # 选择模型
 ccm usage      # 查询用量
 ```
+
+## 6. 权限与插件生态管理 (v0.2.0 增强)
+
+针对 Claude Code 的权限系统（`allow`/`deny`）和官方插件（Plugins/MCP）体系，引入一套结构化、可复用的分级管理机制。解决权限文件随时间推移变得臃肿、多项目间权限需要重复配置等痛点。
+
+### 6.1 权限层级与架构说明
+
+`cc-manager` 将在底层协同管理以下三个维度的配置文件，通过深拷贝与智能合并进行读写，确保配置的安全性：
+
+1.  **Global Base (`~/.claude/settings.json`)**：全局基础配置（管理环境变量、`enabledPlugins`、`defaultMode`）。
+2.  **Global Local (`~/.claude/settings.local.json`)**：用户级全局权限（User-level Permissions）。在此定义的所有 `Bash(xxx:*)` 或 `WebFetch(xxx)` 将作为全局 fallback 生效于所有项目。
+3.  **Project Local (`$PWD/.claude/settings.local.json`)**：项目级独有权限。仅对当前目录生效的专属指令、特定插件的 MCP 方法等。
+
+### 6.2 项目权限初始化 (`perm init`)
+
+为新项目一键生成并写入标准化的项目级权限，同时支持拉取/继承 User 级别的模板权限。
+
+*   **触发指令**：`ccm perm init`
+*   **前置条件**：在特定项目根目录下执行。
+*   **交互流程**：
+    1.  **选择项目模板**：提示用户选择当前项目类型（如 `Node.js / Frontend`, `Python`, `Generic` 等），以生成匹配的默认权限白名单（如 Node 项目默认赋予 `Bash(pnpm *:*)`, `Bash(npm run *:*)`, `Bash(npx *:*)`）。
+    2.  **选择需要激活的 MCP 插件**：列出当前全局已安装的官方插件（如 `playwright`, `supabase`），询问是否在该项目中允许其全部方法（如勾选则自动生成 `mcp__playwright__browser_*:*` 权限）。
+    3.  **引入 User 级通用权限**：询问 _"是否将全局常用文件/网络操作 (如 git, find, ls, cat) 显式复制到当前项目？(推荐)"_。
+    4.  **生成与写入**：自动创建或合并到 `$PWD/.claude/settings.local.json` 的 `permissions.allow` 数组中。
+
+### 6.3 权限概览与审计 (`perm list` / `perm audit`)
+
+提供清洗后的可视化视图，将混乱的 JSON 权限数组分类展示，并智能识别冗余的单次历史命令。
+
+*   **触发指令**：`ccm perm ls` 或 `ccm perm audit`
+*   **输出格式**：
+    1.  **作用域提示**：明确标示当前读取的文件来源（Global Local & Project Local）。
+    2.  **模块化分类展示**：
+        *   🌐 **网络访问 (WebFetch/WebSearch)**：提取域名列表（如 `github.com`, `docs.nestjs.com`）。
+        *   🔌 **插件与 MCP (mcp__*)**：按插件名称聚类展示（如 `playwright (7 methods)`, `supabase (3 methods)`）。
+        *   💻 **终端命令 (Bash)**：按工具命令分组（如 `git: clone, push, log`, `pnpm: dev, build, lint`）。
+    3.  **冗余检测告警 (Audit)**：自动扫描包含绝对路径（如 `/Users/...`）、临时目录（如 `/private/tmp/...`）或没有结尾通配符 `:*` 的过长命令，在底部输出：*⚠️ 发现 15 条硬编码的单次执行命令。运行 `ccm perm clean` 进行清理和优化。*
+
+### 6.4 权限清理与合并优化 (`perm clean`)
+
+帮助用户将 Claude Code 自动生成的冗长、一次性命令提取为通配符规则，清理无用记录。
+
+*   **触发指令**：`ccm perm clean`
+*   **执行逻辑**：
+    1.  **询问作用域**：清理 Global 还是 Current Project。
+    2.  **智能提取与建议（交互式 Checkbox）**：
+        *   **通配符转换建议**：识别 `Bash(pnpm run lint --fix)`，建议替换为 `Bash(pnpm run lint:*)`。
+        *   **垃圾清理建议**：识别出带有系统临时目录或带管道符 `| grep` 的复杂查询命令，建议直接删除。
+        *   **同类合并建议**：检测到多个相同的 base command（如 5 个不同的 `git log` 参数），建议合并为 `Bash(git log:*)`。
+    3.  **安全备份**：确认覆写前，自动将原文件备份为 `.local.json.bak`。
+    4.  **执行覆写**：更新目标文件的 `permissions.allow` 数组。
+
+### 6.5 官方插件生态管理 (`plugin`)
+
+对 `@claude-plugins-official` 生态进行快捷管理，并在启停时自动处理权限关联。
+
+*   **触发指令**：`ccm plugin`
+*   **执行逻辑**：
+    1.  解析 `~/.claude/settings.json` 的 `enabledPlugins`。
+    2.  交互式多选列表：展示所有已知/已安装的插件（如 `frontend-design`, `supabase`, `playwright`），并标记当前 `[ON]` / `[OFF]` 状态。
+    3.  **状态切换联动**：
+        *   当开启某个插件时：自动更新 `settings.json`，并询问 *"是否立即为当前项目(.local.json)赋予该插件的 MCP 权限？"*
+        *   当关闭某个插件时：更新 `settings.json`。
+
+### 6.6 执行模式切换 (`mode`)
+
+快捷切换 Claude Code 的交互行为模式。
+
+*   **触发指令**：`ccm mode`
+*   **行为**：在 `plan`（规划模式，执行危险操作前询问）和 `act`（直接执行模式）之间进行 select 切换。
+*   **更新目标**：直接修改 `~/.claude/settings.json` 中的 `permissions.defaultMode` 字段。
+
+---
+
+## 7. 数据结构更新补充
+
+为了支持第 6 章的权限与插件管理，需在 `config-utils.ts` 中新增以下内部数据模型和解析方法：
+
+### 7.1 权限规则解析模型
+```ts
+// 用于将原始的 "Bash(git log --oneline)" 解析为结构化数据的内部模型
+interface ParsedPermission {
+  raw: string;          // 原始字符串，如 "Bash(pnpm dev:*)"
+  type: 'Bash' | 'WebFetch' | 'WebSearch' | 'MCP' | 'Unknown';
+  baseCommand?: string; // 如 "pnpm"
+  subCommand?: string;  // 如 "dev"
+  domain?: string;      // 如 "github.com"
+  pluginName?: string;  // 如 "playwright"
+  method?: string;      // 如 "browser_navigate"
+  isWildcard: boolean;  // 是否以 :* 结尾
+  isHardcoded: boolean; // 是否包含绝对路径或复杂管道符（用于 Audit 告警）
+}
+```
+
+### 7.2 默认项目权限模板 (内置于 CCM)
+```ts
+const PERMISSION_TEMPLATES = {
+  "Node.js":[
+    "Bash(pnpm *:*)", "Bash(npm *:*)", "Bash(npx *:*)", "Bash(node:*)",
+    "Bash(tsc:*)", "Bash(biome:*)", "Bash(eslint:*)"
+  ],
+  "Generic":[
+    "Bash(git *:*)", "Bash(find:*)", "Bash(ls:*)", "Bash(cat:*)", 
+    "Bash(grep:*)", "Bash(echo:*)", "Bash(head:*)", "Bash(wc:*)",
+    "mcp__ide__getDiagnostics"
+  ]
+};
+```

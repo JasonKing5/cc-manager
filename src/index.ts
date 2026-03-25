@@ -16,6 +16,9 @@ import { registerExportCommand } from "./commands/export.js";
 import { importCommand } from "./commands/import.js";
 import { snapshotCommand } from "./commands/snapshot.js";
 import { registerCompletionCommand } from "./commands/completion.js";
+import { registerPermCommand } from "./commands/perm.js";
+import { registerPluginCommand } from "./commands/plugin.js";
+import { registerModeCommand } from "./commands/mode.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -80,6 +83,9 @@ program
   .action(snapshotCommand);
 
 registerCompletionCommand(program);
+registerPermCommand(program);
+registerPluginCommand(program);
+registerModeCommand(program);
 
 // Gracefully handle Ctrl+C during interactive prompts
 process.on("uncaughtException", (err) => {

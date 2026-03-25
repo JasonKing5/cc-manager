@@ -9,7 +9,7 @@ export function registerUsageCommand(program: Command): void {
     .command("usage")
     .description("Query current API key balance and quota")
     .option("-H, --history", "Show usage history")
-    .option("-l, --limit <n>", "Number of history entries to show", "7")
+    .option("-l, --limit <n>", "Number of days to show", "7")
     .action(usageCommand);
 }
 
