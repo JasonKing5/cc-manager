@@ -55,7 +55,7 @@ export async function recordEntry(
   await writeHistory(history);
 }
 
-export async function displayHistory(
+export async function displayHistorySummary(
   configName: string,
   limit: number,
 ): Promise<void> {
@@ -70,6 +70,98 @@ export async function displayHistory(
     );
     return;
   }
+
+  // Group all entries by day
+  const allGrouped = new Map<string, UsageEntry[]>();
+  for (const e of entries) {
+    const day = e.timestamp.slice(0, 10);
+    const group = allGrouped.get(day);
+    if (group) group.push(e);
+    else allGrouped.set(day, [e]);
+  }
+
+  // Select last N days
+  const allDayKeys = [...allGrouped.keys()];
+  const selectedDayKeys = allDayKeys.slice(-limit);
+
+  // Build daily-last list (last entry per day = end-of-day spend)
+  const dailyLast: { day: string; entry: UsageEntry }[] = [];
+  for (const day of selectedDayKeys) {
+    const group = allGrouped.get(day)!;
+    dailyLast.push({ day, entry: group[group.length - 1] });
+  }
+
+  // Compute daily deltas
+  const dailySpends: number[] = [];
+  for (let i = 0; i < dailyLast.length; i++) {
+    if (i === 0) {
+      const group = allGrouped.get(dailyLast[i].day)!;
+      if (group.length > 1) {
+        dailySpends.push(group[group.length - 1].spend - group[0].spend);
+      } else {
+        dailySpends.push(0);
+      }
+    } else {
+      dailySpends.push(
+        dailyLast[i].entry.spend - dailyLast[i - 1].entry.spend,
+      );
+    }
+  }
+
+  // Simplified table: one row per day
+  const sep = "─".repeat(30);
+  console.log("");
+  console.log(chalk.bold("  Daily Usage"));
+  console.log(chalk.dim(`  ${sep}`));
+  console.log(chalk.dim(`  ${"Date".padEnd(14)}Daily Spend`));
+
+  for (let i = 0; i < dailyLast.length; i++) {
+    const day = dailyLast[i].day;
+    const spend = dailySpends[i];
+    const spendStr =
+      spend > 0
+        ? chalk.red(`+$${spend.toFixed(2)}`)
+        : spend < 0
+          ? chalk.green(`-$${Math.abs(spend).toFixed(2)}`)
+          : chalk.dim("$0.00");
+    console.log(`  ${day.padEnd(14)}${spendStr}`);
+  }
+
+  console.log(chalk.dim(`  ${sep}`));
+
+  // Daily average
+  if (dailyLast.length >= 2) {
+    const first = dailyLast[0].entry;
+    const last = dailyLast[dailyLast.length - 1].entry;
+    const daysDiff =
+      (new Date(last.timestamp).getTime() -
+        new Date(first.timestamp).getTime()) /
+      (1000 * 60 * 60 * 24);
+    const dailyAvg = daysDiff > 0 ? (last.spend - first.spend) / daysDiff : 0;
+    console.log(`  Daily avg: ${chalk.cyan(`$${dailyAvg.toFixed(2)}/day`)}`);
+  } else {
+    console.log(chalk.dim("  Not enough data for trends"));
+  }
+
+  // Chart (require 3+ days)
+  if (dailyLast.length >= 3) {
+    renderChartImproved(
+      dailyLast.map((d) => d.entry),
+      dailySpends,
+    );
+  }
+
+  console.log("");
+}
+
+export async function displayHistory(
+  configName: string,
+  limit: number,
+): Promise<void> {
+  const history = await readHistory();
+  const entries = history[configName];
+
+  if (!entries || entries.length === 0) return;
 
   // Limit applies to days, not raw entries
   const allGrouped = new Map<string, UsageEntry[]>();
@@ -98,12 +190,11 @@ export async function displayHistory(
   for (const [day, group] of grouped) {
     dailyLast.set(day, group[group.length - 1]);
   }
-  const daily = [...dailyLast.values()];
 
   // Table
-  const sep = "\u2500".repeat(62);
+  const sep = "─".repeat(62);
   console.log("");
-  console.log(chalk.bold(`  Usage History (${configName})`));
+  console.log(chalk.bold(`  Detailed History (${configName})`));
   console.log(chalk.dim(`  ${sep}`));
   console.log(
     chalk.dim(
@@ -111,17 +202,14 @@ export async function displayHistory(
     ),
   );
 
-  const dailySpends: number[] = [];
   for (let di = 0; di < dayKeys.length; di++) {
     const day = dayKeys[di];
     const group = grouped.get(day)!;
 
-    // Separator between day groups
     if (di > 0) {
       console.log(chalk.dim(`  ${"".padEnd(18)}${"".padEnd(11)}${"".padEnd(12)}${"".padEnd(11)}${"- ".repeat(5)}`));
     }
 
-    // Daily delta: inter-day for di>0, intra-day for di===0 (if multiple records)
     let dailyDelta: number | null = null;
     if (di > 0) {
       const prevLast = dailyLast.get(dayKeys[di - 1])!;
@@ -129,7 +217,7 @@ export async function displayHistory(
     } else if (group.length > 1) {
       dailyDelta = group[group.length - 1].spend - group[0].spend;
     }
-    let dailyDeltaStr = chalk.dim("\u2014");
+    let dailyDeltaStr = chalk.dim("—");
     if (dailyDelta != null) {
       const sign = dailyDelta >= 0 ? "+" : "";
       dailyDeltaStr = (dailyDelta >= 0 ? chalk.red : chalk.green)(
@@ -147,8 +235,7 @@ export async function displayHistory(
           ? `$${(e.maxBudget - e.spend).toFixed(2)}`
           : "N/A";
 
-      // Intra-day delta (between consecutive records within the same day)
-      let deltaStr = chalk.dim("\u2014");
+      let deltaStr = chalk.dim("—");
       if (i > 0) {
         const delta = e.spend - group[i - 1].spend;
         const sign = delta >= 0 ? "+" : "";
@@ -157,97 +244,130 @@ export async function displayHistory(
         );
       }
 
-      // Show daily delta only on last row of each day group
       const dailyCol = i === group.length - 1 ? dailyDeltaStr : "";
 
       console.log(
         `  ${dateStr.padEnd(18)}${padColored(chalk.yellow(spendStr), 11)}${padColored(chalk.green(remainStr), 12)}${padColored(deltaStr, 11)}${dailyCol}`,
       );
     }
-    dailySpends.push(dailyDelta ?? 0);
   }
 
   console.log(chalk.dim(`  ${sep}`));
-
-  // Summary
-  if (daily.length >= 2) {
-    const first = daily[0];
-    const last = daily[daily.length - 1];
-    const daysDiff =
-      (new Date(last.timestamp).getTime() -
-        new Date(first.timestamp).getTime()) /
-      (1000 * 60 * 60 * 24);
-    const dailyAvg = daysDiff > 0 ? (last.spend - first.spend) / daysDiff : 0;
-
-    console.log(
-      `  Daily avg: ${chalk.cyan(`$${dailyAvg.toFixed(2)}/day`)}`,
-    );
-  } else {
-    console.log(chalk.dim("  Not enough data for trends"));
-  }
-
-  // Chart uses daily last values (only with 3+ days)
-  if (daily.length >= 3) {
-    renderChart(daily, dailySpends);
-  }
-
   console.log("");
 }
 
-function renderChart(entries: UsageEntry[], dailySpends: number[]): void {
-  const deltas: { delta: number; entry: UsageEntry }[] = entries.map((e, i) => ({
-    delta: dailySpends[i],
-    entry: e,
-  }));
-  if (deltas.length === 0) return;
+function renderChartImproved(
+  entries: UsageEntry[],
+  dailySpends: number[],
+): void {
+  const values = dailySpends;
+  if (values.length === 0) return;
 
-  const values = deltas.map((d) => d.delta);
-  const max = Math.max(...values);
-  const min = Math.min(0, ...values); // floor at 0 for typical case
-  const range = max - min || 1;
-  const height = 8;
-  const barW = 5; // match MM/DD label width
+  const maxVal = Math.max(...values, 0) || 1;
+
+  // Y-axis tick algorithm: ~5 ticks, minimum step of 0.5
+  const rawStep = maxVal / 5;
+  const step = Math.max(0.5, Math.ceil(rawStep * 2) / 2);
+  const ticks: number[] = [];
+  for (let i = 0; i * step <= maxVal || ticks.length < 2; i++) {
+    ticks.push(i * step);
+  }
+  if (ticks[ticks.length - 1] < maxVal) {
+    ticks.push(ticks[ticks.length - 1] + step);
+  }
+  const chartMax = ticks[ticks.length - 1];
+
+  // Each tick interval gets 2 rows for more height
+  const rowsPerTick = 2;
+  const rowCount = Math.max(6, (ticks.length - 1) * rowsPerTick);
+  const barW = 5;
   const gap = 1;
-  const step = barW + gap;
+  const chartW = values.length * (barW + gap) - gap;
+
+  // Dashed line filling the chart width (subtle)
+  const dash = "┈".repeat(chartW);
 
   console.log("");
   console.log(chalk.bold("  Daily Spend:"));
   console.log("");
 
-  // Calculate bar heights (0 for $0 values, minimum 1 for positive values)
+  // Bar heights scaled to rowCount
   const barHeights = values.map((v) =>
-    v <= 0 ? 0 : Math.max(1, Math.round(((v - min) / range) * (height - 1)) + 1),
+    v <= 0 ? 0 : Math.max(1, Math.round((v / chartMax) * rowCount)),
   );
 
-  // Render rows top-to-bottom
-  for (let row = 0; row < height; row++) {
-    const threshold = height - row;
-    const label =
-      row === 0
-        ? `$${max.toFixed(0)}`.padStart(6)
-        : row === height - 1
-          ? `$${min.toFixed(0)}`.padStart(6)
-          : "      ";
-    let line = "";
-    for (let i = 0; i < deltas.length; i++) {
-      const filled = barHeights[i] >= threshold;
-      line += filled ? chalk.cyan("\u2588".repeat(barW)) : " ".repeat(barW);
-      if (i < deltas.length - 1) line += " ".repeat(gap);
-    }
-    console.log(chalk.dim(`  ${label} `) + line);
+  // Build tick row map: tick value -> row index
+  const tickRows = new Map<number, number>();
+  for (const t of ticks) {
+    if (t === 0) continue; // 0 is at the X-axis
+    const row = rowCount - Math.round((t / chartMax) * rowCount);
+    tickRows.set(row, t);
   }
 
-  // X-axis line
-  const axisW = deltas.length * step - gap;
-  console.log(chalk.dim(`         ${"─".repeat(axisW)}`));
+  // Render rows top-to-bottom
+  for (let row = 0; row < rowCount; row++) {
+    const threshold = rowCount - row;
+    const tickVal = tickRows.get(row);
 
-  // Date labels aligned under each bar
-  let labelLine = "         ";
-  for (let i = 0; i < deltas.length; i++) {
-    const d = new Date(deltas[i].entry.timestamp);
+    // Y-axis label
+    const label =
+      tickVal != null
+        ? `$${tickVal.toFixed(1)}`.padStart(6)
+        : "      ";
+
+    // Y-axis tick mark: ┤ at tick rows, │ otherwise
+    const axisMark = tickVal != null ? "┤" : "│";
+
+    // Build bar area
+    let line = "";
+    for (let i = 0; i < values.length; i++) {
+      const filled = barHeights[i] >= threshold;
+      line += filled ? chalk.cyan("█".repeat(barW)) : " ".repeat(barW);
+      if (i < values.length - 1) line += " ".repeat(gap);
+    }
+
+    // Overlay dashed grid line at tick rows (behind bars)
+    if (tickVal != null) {
+      let gridLine = "";
+      for (let i = 0; i < values.length; i++) {
+        const filled = barHeights[i] >= threshold;
+        if (filled) {
+          gridLine += chalk.cyan("█".repeat(barW));
+        } else {
+          gridLine += chalk.dim.gray("┈".repeat(barW));
+        }
+        if (i < values.length - 1) {
+          gridLine += chalk.dim.gray("┈".repeat(gap));
+        }
+      }
+      console.log(chalk.dim(`  ${label} ${axisMark}`) + gridLine);
+    } else {
+      console.log(chalk.dim(`  ${label} ${axisMark}`) + line);
+    }
+  }
+
+  // X-axis: $0.0 label + corner + horizontal line (with ▄ under bars to close gap)
+  let axisLine = "";
+  for (let i = 0; i < values.length; i++) {
+    if (barHeights[i] >= 1) {
+      axisLine += chalk.cyan("▀".repeat(barW));
+    } else {
+      axisLine += chalk.dim("─".repeat(barW));
+    }
+    if (i < values.length - 1) {
+      axisLine += chalk.dim("─".repeat(gap));
+    }
+  }
+  console.log(chalk.dim(`  ${"$0.0".padStart(6)} └`) + axisLine);
+
+  // Date labels (offset by Y-axis width: 6 label + 1 space + 1 axis char = 8, plus 2 indent)
+  let labelLine = "          ";
+  for (let i = 0; i < entries.length; i++) {
+    const d = new Date(entries[i].timestamp);
     const lbl = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
     if (i > 0) labelLine += " ".repeat(gap);
     labelLine += lbl.padEnd(barW);
   }
   console.log(chalk.dim(labelLine));
 }
+

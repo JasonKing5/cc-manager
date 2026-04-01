@@ -2,34 +2,25 @@ import chalk from "chalk";
 import type { Command } from "commander";
 import { readSettings } from "../lib/settings.js";
 import { readStore } from "../lib/store.js";
-import { recordEntry, displayHistory } from "../lib/usage-history.js";
+import { recordEntry, displayHistorySummary, displayHistory } from "../lib/usage-history.js";
 
 export function registerUsageCommand(program: Command): void {
   program
     .command("usage")
     .description("Query current API key balance and quota")
     .option("-H, --history", "Show usage history")
+    .option("-v, --verbose", "Show detailed records (use with -H)")
     .option("-l, --limit <n>", "Number of days to show", "7")
     .action(usageCommand);
 }
 
 async function usageCommand(opts: {
   history?: boolean;
+  verbose?: boolean;
   limit?: string;
 }): Promise<void> {
   const store = await readStore();
   const configName = store.active;
-
-  if (opts.history) {
-    if (!configName) {
-      console.log(
-        chalk.yellow("No active configuration. Run `ccm use` first."),
-      );
-      process.exit(1);
-    }
-    await displayHistory(configName, parseInt(opts.limit ?? "7", 10));
-    return;
-  }
 
   let token: string | undefined;
   let baseUrl: string | undefined;
@@ -114,6 +105,14 @@ async function usageCommand(opts: {
       );
     } catch {
       // Don't let history write failure affect main output
+    }
+
+    if (opts.history) {
+      const limit = parseInt(opts.limit ?? "7", 10);
+      await displayHistorySummary(configName, limit);
+      if (opts.verbose) {
+        await displayHistory(configName, limit);
+      }
     }
   }
 }
