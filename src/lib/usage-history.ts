@@ -1,9 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import chalk from "chalk";
-
-const HISTORY_PATH = join(homedir(), ".claude", "ccm-usage-history.json");
 
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
@@ -16,239 +11,112 @@ function padColored(s: string, width: number): string {
   return s + " ".repeat(Math.max(0, width - visible));
 }
 
-interface UsageEntry {
-  timestamp: string;
+export interface SpendLogEntry {
+  startTime: string; // "YYYY-MM-DD"
   spend: number;
-  maxBudget: number | null;
+  users: Record<string, number>;
+  models: Record<string, number>;
 }
 
-type UsageHistory = Record<string, UsageEntry[]>;
+export async function fetchSpendLogs(
+  apiBase: string,
+  token: string,
+  keyHash: string,
+  days: number,
+): Promise<SpendLogEntry[]> {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - days);
 
-export async function readHistory(): Promise<UsageHistory> {
-  try {
-    const raw = await readFile(HISTORY_PATH, "utf-8");
-    return JSON.parse(raw) as UsageHistory;
-  } catch {
-    return {};
-  }
-}
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const url = `${apiBase}/spend/logs?api_key=${encodeURIComponent(keyHash)}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
 
-async function writeHistory(history: UsageHistory): Promise<void> {
-  await writeFile(HISTORY_PATH, JSON.stringify(history, null, 2) + "\n");
-}
-
-export async function recordEntry(
-  configName: string,
-  spend: number,
-  maxBudget: number | null,
-): Promise<void> {
-  const history = await readHistory();
-  const entries = history[configName] ?? [];
-
-  entries.push({
-    timestamp: new Date().toISOString(),
-    spend,
-    maxBudget,
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
   });
 
-  history[configName] = entries;
-  await writeHistory(history);
+  if (!res.ok) {
+    throw new Error(`API request failed: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  if (!Array.isArray(data)) {
+    throw new Error("Unexpected response format");
+  }
+
+  return (data as SpendLogEntry[]).sort((a, b) =>
+    a.startTime.localeCompare(b.startTime),
+  );
 }
 
-export async function displayHistorySummary(
-  configName: string,
-  limit: number,
-): Promise<void> {
-  const history = await readHistory();
-  const entries = history[configName];
-
-  if (!entries || entries.length === 0) {
-    console.log(
-      chalk.yellow(
-        `No usage history for '${configName}'. Run \`ccm usage\` to start recording.`,
-      ),
-    );
+export function displayHistorySummary(entries: SpendLogEntry[]): void {
+  if (entries.length === 0) {
+    console.log(chalk.yellow("  No spend data found for this period."));
     return;
   }
 
-  // Group all entries by day
-  const allGrouped = new Map<string, UsageEntry[]>();
-  for (const e of entries) {
-    const day = e.timestamp.slice(0, 10);
-    const group = allGrouped.get(day);
-    if (group) group.push(e);
-    else allGrouped.set(day, [e]);
-  }
+  const dailySpends = entries.map((e) => e.spend);
 
-  // Select last N days
-  const allDayKeys = [...allGrouped.keys()];
-  const selectedDayKeys = allDayKeys.slice(-limit);
-
-  // Build daily-last list (last entry per day = end-of-day spend)
-  const dailyLast: { day: string; entry: UsageEntry }[] = [];
-  for (const day of selectedDayKeys) {
-    const group = allGrouped.get(day)!;
-    dailyLast.push({ day, entry: group[group.length - 1] });
-  }
-
-  // Compute daily deltas
-  const dailySpends: number[] = [];
-  for (let i = 0; i < dailyLast.length; i++) {
-    if (i === 0) {
-      const group = allGrouped.get(dailyLast[i].day)!;
-      if (group.length > 1) {
-        dailySpends.push(group[group.length - 1].spend - group[0].spend);
-      } else {
-        dailySpends.push(0);
-      }
-    } else {
-      dailySpends.push(
-        dailyLast[i].entry.spend - dailyLast[i - 1].entry.spend,
-      );
-    }
-  }
-
-  // Simplified table: one row per day
-  const sep = "─".repeat(30);
-  console.log("");
-  console.log(chalk.bold("  Daily Usage"));
-  console.log(chalk.dim(`  ${sep}`));
-  console.log(chalk.dim(`  ${"Date".padEnd(14)}Daily Spend`));
-
-  for (let i = 0; i < dailyLast.length; i++) {
-    const day = dailyLast[i].day;
-    const spend = dailySpends[i];
-    const spendStr =
-      spend > 0
-        ? chalk.red(`+$${spend.toFixed(2)}`)
-        : spend < 0
-          ? chalk.green(`-$${Math.abs(spend).toFixed(2)}`)
-          : chalk.dim("$0.00");
-    console.log(`  ${day.padEnd(14)}${spendStr}`);
-  }
-
-  console.log(chalk.dim(`  ${sep}`));
+  // Chart with spend labels on top of bars
+  renderChartImproved(
+    entries.map((e) => e.startTime),
+    dailySpends,
+  );
 
   // Daily average
-  if (dailyLast.length >= 2) {
-    const first = dailyLast[0].entry;
-    const last = dailyLast[dailyLast.length - 1].entry;
-    const daysDiff =
-      (new Date(last.timestamp).getTime() -
-        new Date(first.timestamp).getTime()) /
-      (1000 * 60 * 60 * 24);
-    const dailyAvg = daysDiff > 0 ? (last.spend - first.spend) / daysDiff : 0;
+  if (entries.length >= 2) {
+    const totalSpend = dailySpends.reduce((a, b) => a + b, 0);
+    const dailyAvg = totalSpend / entries.length;
     console.log(`  Daily avg: ${chalk.cyan(`$${dailyAvg.toFixed(2)}/day`)}`);
   } else {
     console.log(chalk.dim("  Not enough data for trends"));
   }
 
-  // Chart (require 3+ days)
-  if (dailyLast.length >= 3) {
-    renderChartImproved(
-      dailyLast.map((d) => d.entry),
-      dailySpends,
-    );
-  }
-
   console.log("");
 }
 
-export async function displayHistory(
-  configName: string,
-  limit: number,
-): Promise<void> {
-  const history = await readHistory();
-  const entries = history[configName];
+function simplifyModelName(name: string): string {
+  // Strip common prefixes like "us.anthropic." or "us.amazon."
+  let s = name.replace(/^[a-z]{2}\.[a-z]+\./, "");
+  // Strip date-version suffixes like "-20251001-v1:0"
+  s = s.replace(/-\d{8}(-v\d+)?(:\d+)?$/, "");
+  return s;
+}
 
-  if (!entries || entries.length === 0) return;
+export function displayHistory(entries: SpendLogEntry[]): void {
+  if (entries.length === 0) return;
 
-  // Limit applies to days, not raw entries
-  const allGrouped = new Map<string, UsageEntry[]>();
-  for (const e of entries) {
-    const day = e.timestamp.slice(0, 10);
-    const group = allGrouped.get(day);
-    if (group) group.push(e);
-    else allGrouped.set(day, [e]);
-  }
-  const allDayKeys = [...allGrouped.keys()];
-  const selectedDays = new Set(allDayKeys.slice(-limit));
-  const shown = entries.filter((e) => selectedDays.has(e.timestamp.slice(0, 10)));
-
-  // Group entries by date
-  const grouped = new Map<string, UsageEntry[]>();
-  for (const e of shown) {
-    const day = e.timestamp.slice(0, 10);
-    const group = grouped.get(day);
-    if (group) group.push(e);
-    else grouped.set(day, [e]);
-  }
-  const dayKeys = [...grouped.keys()];
-
-  // Build daily-last map for inter-day delta
-  const dailyLast = new Map<string, UsageEntry>();
-  for (const [day, group] of grouped) {
-    dailyLast.set(day, group[group.length - 1]);
-  }
-
-  // Table
-  const sep = "─".repeat(62);
-  console.log("");
-  console.log(chalk.bold(`  Detailed History (${configName})`));
-  console.log(chalk.dim(`  ${sep}`));
-  console.log(
-    chalk.dim(
-      `  ${"Date".padEnd(18)}${"Spent".padEnd(11)}${"Remaining".padEnd(12)}${"Delta".padEnd(11)}Daily`,
-    ),
+  const visibleEntries = entries.filter(
+    (e) => e.spend > 0 || Object.values(e.models).some((v) => v > 0),
   );
+  if (visibleEntries.length === 0) return;
 
-  for (let di = 0; di < dayKeys.length; di++) {
-    const day = dayKeys[di];
-    const group = grouped.get(day)!;
+  const sep = "─".repeat(50);
+  console.log("");
+  console.log(chalk.bold("  Model Breakdown"));
+  console.log(chalk.dim(`  ${sep}`));
 
-    if (di > 0) {
-      console.log(chalk.dim(`  ${"".padEnd(18)}${"".padEnd(11)}${"".padEnd(12)}${"".padEnd(11)}${"- ".repeat(5)}`));
+  for (let ei = 0; ei < visibleEntries.length; ei++) {
+    const entry = visibleEntries[ei];
+    const models = Object.entries(entry.models).filter(([, v]) => v > 0);
+    models.sort((a, b) => b[1] - a[1]);
+
+    // Day header with total
+    const spendTotal = entry.spend > 0
+      ? chalk.yellow(`$${entry.spend.toFixed(2)}`)
+      : chalk.dim("$0.00");
+    console.log(`  ${chalk.bold(entry.startTime)}  ${spendTotal}`);
+
+    // Model rows
+    for (const [model, spend] of models) {
+      const modelName = simplifyModelName(model);
+      const spendStr = chalk.dim(`$${spend.toFixed(2)}`);
+      console.log(`    ${chalk.gray("├")} ${modelName.padEnd(30)}${spendStr}`);
     }
 
-    let dailyDelta: number | null = null;
-    if (di > 0) {
-      const prevLast = dailyLast.get(dayKeys[di - 1])!;
-      dailyDelta = group[group.length - 1].spend - prevLast.spend;
-    } else if (group.length > 1) {
-      dailyDelta = group[group.length - 1].spend - group[0].spend;
-    }
-    let dailyDeltaStr = chalk.dim("—");
-    if (dailyDelta != null) {
-      const sign = dailyDelta >= 0 ? "+" : "";
-      dailyDeltaStr = (dailyDelta >= 0 ? chalk.red : chalk.green)(
-        `${sign}$${dailyDelta.toFixed(2)}`,
-      );
-    }
-
-    for (let i = 0; i < group.length; i++) {
-      const e = group[i];
-      const d = new Date(e.timestamp);
-      const dateStr = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      const spendStr = `$${e.spend.toFixed(2)}`;
-      const remainStr =
-        e.maxBudget != null
-          ? `$${(e.maxBudget - e.spend).toFixed(2)}`
-          : "N/A";
-
-      let deltaStr = chalk.dim("—");
-      if (i > 0) {
-        const delta = e.spend - group[i - 1].spend;
-        const sign = delta >= 0 ? "+" : "";
-        deltaStr = (delta >= 0 ? chalk.red : chalk.green)(
-          `${sign}$${delta.toFixed(2)}`,
-        );
-      }
-
-      const dailyCol = i === group.length - 1 ? dailyDeltaStr : "";
-
-      console.log(
-        `  ${dateStr.padEnd(18)}${padColored(chalk.yellow(spendStr), 11)}${padColored(chalk.green(remainStr), 12)}${padColored(deltaStr, 11)}${dailyCol}`,
-      );
+    // Spacing between days
+    if (ei < visibleEntries.length - 1) {
+      console.log("");
     }
   }
 
@@ -257,7 +125,7 @@ export async function displayHistory(
 }
 
 function renderChartImproved(
-  entries: UsageEntry[],
+  dates: string[],
   dailySpends: number[],
 ): void {
   const values = dailySpends;
@@ -280,12 +148,8 @@ function renderChartImproved(
   // Each tick interval gets 2 rows for more height
   const rowsPerTick = 2;
   const rowCount = Math.max(6, (ticks.length - 1) * rowsPerTick);
-  const barW = 5;
-  const gap = 1;
-  const chartW = values.length * (barW + gap) - gap;
-
-  // Dashed line filling the chart width (subtle)
-  const dash = "┈".repeat(chartW);
+  const barW = 7;
+  const gap = 2;
 
   console.log("");
   console.log(chalk.bold("  Daily Spend:"));
@@ -296,10 +160,13 @@ function renderChartImproved(
     v <= 0 ? 0 : Math.max(1, Math.round((v / chartMax) * rowCount)),
   );
 
+  // Label row for each bar: one row above bar top
+  const labelRows = barHeights.map((h) => (h > 0 ? rowCount - h - 1 : -1));
+
   // Build tick row map: tick value -> row index
   const tickRows = new Map<number, number>();
   for (const t of ticks) {
-    if (t === 0) continue; // 0 is at the X-axis
+    if (t === 0) continue;
     const row = rowCount - Math.round((t / chartMax) * rowCount);
     tickRows.set(row, t);
   }
@@ -315,38 +182,38 @@ function renderChartImproved(
         ? `$${tickVal.toFixed(1)}`.padStart(6)
         : "      ";
 
-    // Y-axis tick mark: ┤ at tick rows, │ otherwise
+    // Y-axis tick mark
     const axisMark = tickVal != null ? "┤" : "│";
 
-    // Build bar area
+    // Build bar area with inline spend labels
     let line = "";
     for (let i = 0; i < values.length; i++) {
       const filled = barHeights[i] >= threshold;
-      line += filled ? chalk.cyan("█".repeat(barW)) : " ".repeat(barW);
-      if (i < values.length - 1) line += " ".repeat(gap);
+      const isLabelRow = labelRows[i] === row;
+
+      if (isLabelRow && values[i] > 0) {
+        // Spend label just above the bar
+        const lbl = `$${values[i].toFixed(2)}`;
+        const pad = Math.max(0, barW - lbl.length);
+        const padL = Math.floor(pad / 2);
+        line += chalk.yellow(" ".repeat(padL) + lbl + " ".repeat(pad - padL));
+      } else if (filled) {
+        line += chalk.cyan("█".repeat(barW));
+      } else if (tickVal != null) {
+        line += chalk.dim.gray("┈".repeat(barW));
+      } else {
+        line += " ".repeat(barW);
+      }
+
+      if (i < values.length - 1) {
+        line += tickVal != null ? chalk.dim.gray("┈".repeat(gap)) : " ".repeat(gap);
+      }
     }
 
-    // Overlay dashed grid line at tick rows (behind bars)
-    if (tickVal != null) {
-      let gridLine = "";
-      for (let i = 0; i < values.length; i++) {
-        const filled = barHeights[i] >= threshold;
-        if (filled) {
-          gridLine += chalk.cyan("█".repeat(barW));
-        } else {
-          gridLine += chalk.dim.gray("┈".repeat(barW));
-        }
-        if (i < values.length - 1) {
-          gridLine += chalk.dim.gray("┈".repeat(gap));
-        }
-      }
-      console.log(chalk.dim(`  ${label} ${axisMark}`) + gridLine);
-    } else {
-      console.log(chalk.dim(`  ${label} ${axisMark}`) + line);
-    }
+    console.log(chalk.dim(`  ${label} ${axisMark}`) + line);
   }
 
-  // X-axis: $0.0 label + corner + horizontal line (with ▄ under bars to close gap)
+  // X-axis
   let axisLine = "";
   for (let i = 0; i < values.length; i++) {
     if (barHeights[i] >= 1) {
@@ -360,14 +227,13 @@ function renderChartImproved(
   }
   console.log(chalk.dim(`  ${"$0.0".padStart(6)} └`) + axisLine);
 
-  // Date labels (offset by Y-axis width: 6 label + 1 space + 1 axis char = 8, plus 2 indent)
+  // Date labels (strip leading zeros)
   let labelLine = "          ";
-  for (let i = 0; i < entries.length; i++) {
-    const d = new Date(entries[i].timestamp);
-    const lbl = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+  for (let i = 0; i < dates.length; i++) {
+    const parts = dates[i].split("-");
+    const lbl = `${Number(parts[1])}/${Number(parts[2])}`;
     if (i > 0) labelLine += " ".repeat(gap);
     labelLine += lbl.padEnd(barW);
   }
   console.log(chalk.dim(labelLine));
 }
-

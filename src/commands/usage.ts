@@ -2,7 +2,7 @@ import chalk from "chalk";
 import type { Command } from "commander";
 import { readSettings } from "../lib/settings.js";
 import { readStore } from "../lib/store.js";
-import { recordEntry, displayHistorySummary, displayHistory } from "../lib/usage-history.js";
+import { fetchSpendLogs, displayHistorySummary, displayHistory } from "../lib/usage-history.js";
 
 export function registerUsageCommand(program: Command): void {
   program
@@ -49,6 +49,16 @@ async function usageCommand(opts: {
   const apiBase =
     baseUrl?.replace(/\/bedrock\/?$/, "") ?? "https://www.litellm.org";
 
+  const spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let spinIdx = 0;
+  const spinTimer = setInterval(() => {
+    process.stdout.write(`\r  ${chalk.cyan(spinner[spinIdx++ % spinner.length])} Fetching usage data...`);
+  }, 80);
+  const stopSpinner = () => {
+    clearInterval(spinTimer);
+    process.stdout.write("\r" + " ".repeat(40) + "\r");
+  };
+
   let data: any;
   try {
     const res = await fetch(`${apiBase}/key/info`, {
@@ -56,6 +66,7 @@ async function usageCommand(opts: {
     });
 
     if (!res.ok) {
+      stopSpinner();
       console.log(
         chalk.red(`API request failed: ${res.status} ${res.statusText}`),
       );
@@ -64,9 +75,11 @@ async function usageCommand(opts: {
 
     data = await res.json();
   } catch (err: any) {
+    stopSpinner();
     console.log(chalk.red(`Network error: ${err.message}`));
     process.exit(1);
   }
+  stopSpinner();
 
   const info = data.info ?? data;
   const alias = info.key_alias ?? "N/A";
@@ -95,23 +108,31 @@ async function usageCommand(opts: {
   console.log(`  Expires:    ${chalk.magenta(expiresStr)}`);
   console.log("");
 
-  // Record to history (silently)
-  if (configName) {
-    try {
-      await recordEntry(
-        configName,
-        spent,
-        maxBudget != null ? Number(maxBudget) : null,
+  // Show spend history from API
+  if (opts.history) {
+    const keyHash = data.key;
+    if (!keyHash) {
+      console.log(
+        chalk.yellow("  Key hash not available from API; history requires LiteLLM with key info support."),
       );
-    } catch {
-      // Don't let history write failure affect main output
-    }
-
-    if (opts.history) {
+    } else {
       const limit = parseInt(opts.limit ?? "7", 10);
-      await displayHistorySummary(configName, limit);
-      if (opts.verbose) {
-        await displayHistory(configName, limit);
+      let spinIdx2 = 0;
+      const spinTimer2 = setInterval(() => {
+        process.stdout.write(`\r  ${chalk.cyan(spinner[spinIdx2++ % spinner.length])} Fetching spend history...`);
+      }, 80);
+      try {
+        const entries = await fetchSpendLogs(apiBase, token, keyHash, limit);
+        clearInterval(spinTimer2);
+        process.stdout.write("\r" + " ".repeat(40) + "\r");
+        displayHistorySummary(entries);
+        if (opts.verbose) {
+          displayHistory(entries);
+        }
+      } catch (err: any) {
+        clearInterval(spinTimer2);
+        process.stdout.write("\r" + " ".repeat(40) + "\r");
+        console.log(chalk.red(`  Could not fetch spend history: ${err.message}`));
       }
     }
   }
