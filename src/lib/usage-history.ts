@@ -133,9 +133,12 @@ function renderChartImproved(
 
   const maxVal = Math.max(...values, 0) || 1;
 
-  // Y-axis tick algorithm: ~5 ticks, minimum step of 0.5
+  // Y-axis tick algorithm: ~5 ticks, adaptive "nice number" step
   const rawStep = maxVal / 5;
-  const step = Math.max(0.5, Math.ceil(rawStep * 2) / 2);
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag;
+  const niceNorm = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  const step = niceNorm * mag;
   const ticks: number[] = [];
   for (let i = 0; i * step <= maxVal || ticks.length < 2; i++) {
     ticks.push(i * step);
@@ -155,13 +158,19 @@ function renderChartImproved(
   console.log(chalk.bold("  Daily Spend:"));
   console.log("");
 
-  // Bar heights scaled to rowCount
-  const barHeights = values.map((v) =>
-    v <= 0 ? 0 : Math.max(1, Math.round((v / chartMax) * rowCount)),
+  // Bar heights using 1/8-row precision via Unicode block elements ▁▂▃▄▅▆▇█
+  const BLOCKS = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+  const totalEighths = 8 * rowCount;
+  const barEighths = values.map((v) =>
+    v <= 0 ? 0 : Math.max(1, Math.round((v / chartMax) * totalEighths)),
   );
 
-  // Label row for each bar: one row above bar top
-  const labelRows = barHeights.map((h) => (h > 0 ? rowCount - h - 1 : -1));
+  // Label row: one row above the topmost filled cell
+  const labelRows = barEighths.map((e, i) => {
+    if (e <= 0) return -1;
+    const topCell = rowCount - Math.ceil(e / 8);
+    return topCell - 1;
+  });
 
   // Build tick row map: tick value -> row index
   const tickRows = new Map<number, number>();
@@ -173,7 +182,6 @@ function renderChartImproved(
 
   // Render rows top-to-bottom
   for (let row = 0; row < rowCount; row++) {
-    const threshold = rowCount - row;
     const tickVal = tickRows.get(row);
 
     // Y-axis label
@@ -188,7 +196,8 @@ function renderChartImproved(
     // Build bar area with inline spend labels
     let line = "";
     for (let i = 0; i < values.length; i++) {
-      const filled = barHeights[i] >= threshold;
+      const cellBottom = 8 * (rowCount - 1 - row);
+      const eighths = Math.min(8, Math.max(0, barEighths[i] - cellBottom));
       const isLabelRow = labelRows[i] === row;
 
       if (isLabelRow && values[i] > 0) {
@@ -197,8 +206,10 @@ function renderChartImproved(
         const pad = Math.max(0, barW - lbl.length);
         const padL = Math.floor(pad / 2);
         line += chalk.yellow(" ".repeat(padL) + lbl + " ".repeat(pad - padL));
-      } else if (filled) {
+      } else if (eighths === 8) {
         line += chalk.cyan("█".repeat(barW));
+      } else if (eighths > 0) {
+        line += chalk.cyan(BLOCKS[eighths].repeat(barW));
       } else if (tickVal != null) {
         line += chalk.dim.gray("┈".repeat(barW));
       } else {
@@ -214,18 +225,8 @@ function renderChartImproved(
   }
 
   // X-axis
-  let axisLine = "";
-  for (let i = 0; i < values.length; i++) {
-    if (barHeights[i] >= 1) {
-      axisLine += chalk.cyan("▀".repeat(barW));
-    } else {
-      axisLine += chalk.dim("─".repeat(barW));
-    }
-    if (i < values.length - 1) {
-      axisLine += chalk.dim("─".repeat(gap));
-    }
-  }
-  console.log(chalk.dim(`  ${"$0.0".padStart(6)} └`) + axisLine);
+  const axisW = values.length * barW + (values.length - 1) * gap;
+  console.log(chalk.dim(`  ${"$0.0".padStart(6)} └${"─".repeat(axisW)}`));
 
   // Date labels (strip leading zeros)
   let labelLine = "          ";
