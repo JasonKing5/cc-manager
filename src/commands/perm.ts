@@ -11,6 +11,7 @@ import {
 import { numberedSelect, styledConfirm } from "../lib/prompts.js";
 import {
   PERMISSION_TEMPLATES,
+  GLOBAL_TOOLKIT,
   KNOWN_PLUGINS,
   categorizePermissions,
   auditPermissions,
@@ -22,12 +23,17 @@ import {
 export function registerPermCommand(program: Command): void {
   const perm = program
     .command("perm")
-    .description("Permission management (init, ls, audit, clean)");
+    .description("Permission management (init, reset, ls, audit, clean)");
 
   perm
     .command("init")
-    .description("Initialize project permissions from template")
+    .description("Initialize permissions from template")
     .action(permInitCommand);
+
+  perm
+    .command("reset")
+    .description("Re-initialize permissions, replacing existing")
+    .action(permResetCommand);
 
   perm
     .command("ls")
@@ -49,35 +55,85 @@ export function registerPermCommand(program: Command): void {
 // ─── perm init ───────────────────────────────────────────────
 
 async function permInitCommand(): Promise<void> {
-  const localPath = projectLocalPath();
-  const existing = await readLocalSettings(localPath);
+  const scope = await numberedSelect<"global" | "project">({
+    message: "Initialize permissions for which scope?",
+    choices: [
+      { name: `Global  ${chalk.dim(GLOBAL_LOCAL_PATH)}`, value: "global" },
+      { name: `Project ${chalk.dim(projectLocalPath())}`, value: "project" },
+    ],
+  });
+  await runInitFlow({ scope, replace: false });
+}
+
+// ─── perm reset ──────────────────────────────────────────────
+
+async function permResetCommand(): Promise<void> {
+  const scope = await numberedSelect<"global" | "project">({
+    message: "Reset permissions for which scope?",
+    choices: [
+      { name: `Global  ${chalk.dim(GLOBAL_LOCAL_PATH)}`, value: "global" },
+      { name: `Project ${chalk.dim(projectLocalPath())}`, value: "project" },
+    ],
+  });
+
+  const filePath = scope === "global" ? GLOBAL_LOCAL_PATH : projectLocalPath();
+  const existing = await readLocalSettings(filePath);
+  const existingCount: number = existing.permissions?.allow?.length ?? 0;
+
+  if (existingCount > 0) {
+    const confirm = await styledConfirm(
+      `This will replace all ${existingCount} existing permission(s). Continue?`,
+      false,
+    );
+    if (!confirm) return;
+  }
+
+  await runInitFlow({ scope, replace: true });
+}
+
+// ─── shared init logic ───────────────────────────────────────
+
+async function runInitFlow(opts: {
+  scope: "global" | "project";
+  replace: boolean;
+}): Promise<void> {
+  const { scope, replace } = opts;
+  const filePath = scope === "global" ? GLOBAL_LOCAL_PATH : projectLocalPath();
+  const existing = await readLocalSettings(filePath);
   const existingPerms: string[] = existing.permissions?.allow ?? [];
 
-  if (existingPerms.length > 0) {
+  if (!replace && existingPerms.length > 0) {
     console.log(
-      chalk.yellow(`Project already has ${existingPerms.length} permission(s).`),
+      chalk.yellow(`Already has ${existingPerms.length} permission(s).`),
     );
     const merge = await styledConfirm("Merge new permissions into existing?");
     if (!merge) return;
   }
 
-  // 1. Select project template
-  const templateKey = await numberedSelect<string>({
-    message: "Select project type",
-    choices: Object.keys(PERMISSION_TEMPLATES).map((k) => ({
-      name: k,
-      value: k,
-    })),
-  });
+  const permSet = new Set<string>(replace ? [] : existingPerms);
 
-  // Collect permissions: chosen template + Generic (always included)
-  const permSet = new Set<string>(existingPerms);
-  for (const p of PERMISSION_TEMPLATES[templateKey]) permSet.add(p);
-  if (templateKey !== "Generic") {
-    for (const p of PERMISSION_TEMPLATES["Generic"]) permSet.add(p);
+  if (scope === "global") {
+    // Offer the Developer Toolkit preset
+    const addToolkit = await styledConfirm("Add the Developer Toolkit preset?");
+    if (addToolkit) {
+      for (const p of GLOBAL_TOOLKIT) permSet.add(p);
+    }
+  } else {
+    // Project: pick template
+    const templateKey = await numberedSelect<string>({
+      message: "Select project type",
+      choices: Object.keys(PERMISSION_TEMPLATES).map((k) => ({
+        name: k,
+        value: k,
+      })),
+    });
+    for (const p of PERMISSION_TEMPLATES[templateKey]) permSet.add(p);
+    if (templateKey !== "Generic") {
+      for (const p of PERMISSION_TEMPLATES["Generic"]) permSet.add(p);
+    }
   }
 
-  // 2. Select MCP plugins to activate
+  // MCP plugins — same for both scopes
   const settings = await readSettings();
   const enabledPlugins: Record<string, boolean> = settings.enabledPlugins ?? {};
   const activePlugins = KNOWN_PLUGINS.filter((p) => enabledPlugins[p.id] === true);
@@ -96,27 +152,28 @@ async function permInitCommand(): Promise<void> {
     }
   }
 
-  // 3. Inherit global user permissions
-  const globalLocal = await readLocalSettings(GLOBAL_LOCAL_PATH);
-  const globalPerms: string[] = globalLocal.permissions?.allow ?? [];
-  if (globalPerms.length > 0) {
-    const inherit = await styledConfirm(
-      `Inherit ${globalPerms.length} global user permission(s) into this project? (recommended)`,
-    );
-    if (inherit) {
-      for (const p of globalPerms) permSet.add(p);
+  // Inherit global user permissions — project scope only
+  if (scope === "project") {
+    const globalLocal = await readLocalSettings(GLOBAL_LOCAL_PATH);
+    const globalPerms: string[] = globalLocal.permissions?.allow ?? [];
+    if (globalPerms.length > 0) {
+      const inherit = await styledConfirm(
+        `Inherit ${globalPerms.length} global user permission(s) into this project? (recommended)`,
+      );
+      if (inherit) {
+        for (const p of globalPerms) permSet.add(p);
+      }
     }
   }
 
-  // 4. Write
   const finalPerms = [...permSet];
   existing.permissions = { ...existing.permissions, allow: finalPerms };
-  await writeLocalSettings(localPath, existing);
+  await writeLocalSettings(filePath, existing);
 
-  const added = finalPerms.length - existingPerms.length;
+  const added = replace ? finalPerms.length : finalPerms.length - existingPerms.length;
   console.log(
     chalk.green(
-      `\nWrote ${finalPerms.length} permission(s) to ${chalk.dim(localPath)}` +
+      `\nWrote ${finalPerms.length} permission(s) to ${chalk.dim(filePath)}` +
         (added > 0 ? ` (${added} new)` : ""),
     ),
   );

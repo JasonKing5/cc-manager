@@ -273,10 +273,46 @@ export const PERMISSION_TEMPLATES: Record<string, string[]> = {
     "Bash(grep:*)",
     "Bash(echo:*)",
     "Bash(head:*)",
+    "Bash(tail:*)",
     "Bash(wc:*)",
-    "mcp__ide__getDiagnostics",
+    "Bash(mkdir:*)",
+    "Bash(cp:*)",
+    "Bash(mv:*)",
+    "Bash(rm:*)",
+    "Bash(kill:*)",
+    "mcp__ide__*",
   ],
 };
+
+// Universal read/inspect tools safe to grant across all projects.
+// Destructive commands (rm, cp, mv, kill) and ecosystem-specific tools
+// (pnpm, tsc, biome, magick…) belong in project-level templates instead.
+export const GLOBAL_TOOLKIT: string[] = [
+  // VCS
+  "Bash(git:*)",
+  // Filesystem (read-only / safe)
+  "Bash(ls:*)",
+  "Bash(cat:*)",
+  "Bash(grep:*)",
+  "Bash(echo:*)",
+  "Bash(head:*)",
+  "Bash(tail:*)",
+  "Bash(wc:*)",
+  "Bash(find:*)",
+  "Bash(mkdir:*)",
+  // Network / process inspection
+  "Bash(curl:*)",
+  "Bash(lsof:*)",
+  "Bash(ps:*)",
+  // Web
+  "WebSearch",
+  "WebFetch(domain:github.com)",
+  "WebFetch(domain:*.google.com)",
+  "WebFetch(domain:stackoverflow.com)",
+  // MCP base
+  "mcp__ide__*",
+  "mcp__context7__*",
+];
 
 // --- Known Plugins ---
 
