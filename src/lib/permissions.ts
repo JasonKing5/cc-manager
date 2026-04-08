@@ -290,6 +290,7 @@ export const PERMISSION_TEMPLATES: Record<string, string[]> = {
 export const GLOBAL_TOOLKIT: string[] = [
   // VCS
   "Bash(git:*)",
+  "Bash(gh:*)",
   // Filesystem (read-only / safe)
   "Bash(ls:*)",
   "Bash(cat:*)",
@@ -319,13 +320,13 @@ export const GLOBAL_TOOLKIT: string[] = [
 export interface KnownPlugin {
   id: string;
   name: string;
-  mcpPrefix: string;
+  mcpPrefixes: string[];
 }
 
 export const KNOWN_PLUGINS: KnownPlugin[] = [
-  { id: "playwright@claude-plugins-official", name: "Playwright", mcpPrefix: "mcp__playwright__" },
-  { id: "frontend-design@claude-plugins-official", name: "Frontend Design", mcpPrefix: "mcp__frontend_design__" },
-  { id: "supabase@claude-plugins-official", name: "Supabase", mcpPrefix: "mcp__supabase__" },
-  { id: "chrome-devtools@anthropic", name: "Chrome DevTools", mcpPrefix: "mcp__chrome-devtools__" },
-  { id: "context7@anthropic", name: "Context7", mcpPrefix: "mcp__context7__" },
+  { id: "playwright@claude-plugins-official",     name: "Playwright",      mcpPrefixes: ["mcp__playwright__"] },
+  { id: "frontend-design@claude-plugins-official", name: "Frontend Design", mcpPrefixes: ["mcp__frontend_design__"] },
+  { id: "supabase@claude-plugins-official",        name: "Supabase",        mcpPrefixes: ["mcp__supabase__", "mcp__plugin_supabase_supabase__"] },
+  { id: "chrome-devtools@anthropic",               name: "Chrome DevTools", mcpPrefixes: ["mcp__chrome-devtools__"] },
+  { id: "context7@anthropic",                      name: "Context7",        mcpPrefixes: ["mcp__context7__", "mcp__plugin_context7_context7__"] },
 ];

@@ -96,14 +96,20 @@ async function pluginCommand(): Promise<void> {
       const localPath = projectLocalPath();
       const local = await readLocalSettings(localPath);
       const perms: string[] = local.permissions?.allow ?? [];
-      const wildcard = `${known.mcpPrefix}*`;
-      if (!perms.includes(wildcard)) {
-        perms.push(wildcard);
+      const wildcards = known.mcpPrefixes.map((p) => `${p}*`);
+      const added: string[] = [];
+      for (const wildcard of wildcards) {
+        if (!perms.includes(wildcard)) {
+          perms.push(wildcard);
+          added.push(wildcard);
+        }
+      }
+      if (added.length > 0) {
         local.permissions = { ...local.permissions, allow: perms };
         await writeLocalSettings(localPath, local);
-        console.log(chalk.green(`  Added ${wildcard} to project permissions.`));
+        console.log(chalk.green(`  Added ${added.join(", ")} to project permissions.`));
       } else {
-        console.log(chalk.dim(`  ${wildcard} already in project permissions.`));
+        console.log(chalk.dim(`  MCP permissions for ${known.name} already in project permissions.`));
       }
     }
   }

@@ -143,12 +143,12 @@ async function runInitFlow(opts: {
       message: "Activate MCP permissions for which plugins?",
       choices: activePlugins.map((p) => ({
         name: p.name,
-        value: p.mcpPrefix,
+        value: p.mcpPrefixes,
         checked: true,
       })),
     });
-    for (const prefix of selectedPlugins) {
-      permSet.add(`${prefix}*`);
+    for (const prefixes of selectedPlugins) {
+      for (const prefix of prefixes) permSet.add(`${prefix}*`);
     }
   }
 
