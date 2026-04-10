@@ -1,24 +1,24 @@
 import chalk from "chalk";
 import type { Command } from "commander";
 import { readSettings } from "../lib/settings.js";
-import { readStore } from "../lib/store.js";
+import { readStore, writeStore } from "../lib/store.js";
 import { fetchSpendLogs, displayHistorySummary, displayHistory } from "../lib/usage-history.js";
 
 export function registerUsageCommand(program: Command): void {
   program
     .command("usage")
     .description("Query current API key balance and quota")
+    .argument("[action]", "baseline: record today's starting spend")
     .option("-H, --history", "Show usage history")
     .option("-v, --verbose", "Show detailed records (use with -H)")
     .option("-l, --limit <n>", "Number of days to show", "7")
     .action(usageCommand);
 }
 
-async function usageCommand(opts: {
-  history?: boolean;
-  verbose?: boolean;
-  limit?: string;
-}): Promise<void> {
+async function usageCommand(
+  action: string | undefined,
+  opts: { history?: boolean; verbose?: boolean; limit?: string },
+): Promise<void> {
   const store = await readStore();
   const configName = store.active;
 
@@ -48,6 +48,37 @@ async function usageCommand(opts: {
   // Derive API base from proxy URL (strip /bedrock suffix)
   const apiBase =
     baseUrl?.replace(/\/bedrock\/?$/, "") ?? "https://www.litellm.org";
+
+  // Handle `ccm usage baseline` — record today's starting spend
+  if (action === "baseline") {
+    if (!configName || !store.providers[configName]) {
+      console.log(chalk.yellow("No active config. Run `ccm use <name>` first."));
+      process.exit(1);
+    }
+    let baselineData: any;
+    try {
+      const res = await fetch(`${apiBase}/key/info`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        console.log(chalk.red(`API request failed: ${res.status} ${res.statusText}`));
+        process.exit(1);
+      }
+      baselineData = await res.json();
+    } catch (err: any) {
+      console.log(chalk.red(`Network error: ${err.message}`));
+      process.exit(1);
+    }
+    const info = baselineData.info ?? baselineData;
+    const baselineSpend = Number(info.spend ?? 0);
+    const today = new Date().toISOString().slice(0, 10);
+    store.providers[configName].dailyBaseline = { date: today, spend: baselineSpend };
+    await writeStore(store);
+    console.log(
+      `\n  ${chalk.green("✓")} Baseline recorded: ${chalk.yellow(`$${baselineSpend.toFixed(4)}`)} as of ${chalk.cyan(today)} for config ${chalk.cyan(configName)}\n`,
+    );
+    return;
+  }
 
   const spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   let spinIdx = 0;
@@ -87,6 +118,11 @@ async function usageCommand(opts: {
   const maxBudget = info.max_budget;
   const expires = info.expires;
 
+  const today = new Date().toISOString().slice(0, 10);
+  const activeProvider = configName ? store.providers[configName] : undefined;
+  const baseline = activeProvider?.dailyBaseline;
+  const todaySpend = baseline?.date === today ? spent - baseline.spend : undefined;
+
   const budgetStr =
     maxBudget != null ? `$${Number(maxBudget).toFixed(2)}` : "Unlimited";
   const remainingStr =
@@ -103,6 +139,9 @@ async function usageCommand(opts: {
   }
   console.log(`  Alias:      ${chalk.cyan(alias)}`);
   console.log(`  Spent:      ${chalk.yellow(`$${spent.toFixed(2)}`)}`);
+  if (todaySpend !== undefined) {
+    console.log(`  Today:      ${chalk.yellow(`$${todaySpend.toFixed(4)}`)}`);
+  }
   console.log(`  Budget:     ${chalk.green(budgetStr)}`);
   console.log(`  Remaining:  ${chalk.green(remainingStr)}`);
   console.log(`  Expires:    ${chalk.magenta(expiresStr)}`);
@@ -125,7 +164,7 @@ async function usageCommand(opts: {
         const entries = await fetchSpendLogs(apiBase, token, keyHash, limit);
         clearInterval(spinTimer2);
         process.stdout.write("\r" + " ".repeat(40) + "\r");
-        displayHistorySummary(entries);
+        displayHistorySummary(entries, todaySpend);
         if (opts.verbose) {
           displayHistory(entries);
         }

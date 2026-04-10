@@ -49,7 +49,17 @@ export async function fetchSpendLogs(
   );
 }
 
-export function displayHistorySummary(entries: SpendLogEntry[]): void {
+export function displayHistorySummary(entries: SpendLogEntry[], todaySpend?: number): void {
+  const today = new Date().toISOString().slice(0, 10);
+  if (todaySpend !== undefined) {
+    const idx = entries.findIndex((e) => e.startTime.slice(0, 10) === today);
+    if (idx === -1) {
+      entries = [...entries, { startTime: today, spend: todaySpend, users: {}, models: {} }];
+    } else {
+      entries = entries.map((e, i) => (i === idx ? { ...e, spend: todaySpend! } : e));
+    }
+  }
+
   if (entries.length === 0) {
     console.log(chalk.yellow("  No spend data found for this period."));
     return;

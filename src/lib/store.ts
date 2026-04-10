@@ -7,11 +7,17 @@ import { PROVIDER_TEMPLATES } from "./providers.js";
 const STORE_DIR = join(homedir(), ".claude");
 const STORE_PATH = join(STORE_DIR, "ccm.json");
 
+export interface DailyBaseline {
+  date: string;   // "YYYY-MM-DD"
+  spend: number;  // cumulative total spend recorded at start of day
+}
+
 export interface ProviderConfig {
   name: string;
   provider?: string;
   env: Record<string, string>;
   models: { name: string; value: string }[];
+  dailyBaseline?: DailyBaseline;
 }
 
 export interface CcmStore {
