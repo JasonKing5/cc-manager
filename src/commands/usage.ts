@@ -70,12 +70,12 @@ async function usageCommand(
       process.exit(1);
     }
     const info = baselineData.info ?? baselineData;
-    const baselineSpend = Number(info.spend ?? 0);
+    const baselineSpend = Math.round(Number(info.spend ?? 0) * 100) / 100;
     const today = new Date().toISOString().slice(0, 10);
     store.providers[configName].dailyBaseline = { date: today, spend: baselineSpend };
     await writeStore(store);
     console.log(
-      `\n  ${chalk.green("✓")} Baseline recorded: ${chalk.yellow(`$${baselineSpend.toFixed(4)}`)} as of ${chalk.cyan(today)} for config ${chalk.cyan(configName)}\n`,
+      `\n  ${chalk.green("✓")} Baseline recorded: ${chalk.yellow(`$${baselineSpend.toFixed(2)}`)} as of ${chalk.cyan(today)} for config ${chalk.cyan(configName)}\n`,
     );
     return;
   }
