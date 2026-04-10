@@ -18,6 +18,7 @@ export interface ProviderConfig {
   env: Record<string, string>;
   models: { name: string; value: string }[];
   dailyBaseline?: DailyBaseline;
+  baselineStartDate?: string; // "YYYY-MM-DD" — date when auto-baseline tracking first began
 }
 
 export interface CcmStore {

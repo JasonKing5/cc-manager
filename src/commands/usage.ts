@@ -8,7 +8,6 @@ export function registerUsageCommand(program: Command): void {
   program
     .command("usage")
     .description("Query current API key balance and quota")
-    .argument("[action]", "baseline: record today's starting spend")
     .option("-H, --history", "Show usage history")
     .option("-v, --verbose", "Show detailed records (use with -H)")
     .option("-l, --limit <n>", "Number of days to show", "7")
@@ -16,7 +15,6 @@ export function registerUsageCommand(program: Command): void {
 }
 
 async function usageCommand(
-  action: string | undefined,
   opts: { history?: boolean; verbose?: boolean; limit?: string },
 ): Promise<void> {
   const store = await readStore();
@@ -48,37 +46,6 @@ async function usageCommand(
   // Derive API base from proxy URL (strip /bedrock suffix)
   const apiBase =
     baseUrl?.replace(/\/bedrock\/?$/, "") ?? "https://www.litellm.org";
-
-  // Handle `ccm usage baseline` — record today's starting spend
-  if (action === "baseline") {
-    if (!configName || !store.providers[configName]) {
-      console.log(chalk.yellow("No active config. Run `ccm use <name>` first."));
-      process.exit(1);
-    }
-    let baselineData: any;
-    try {
-      const res = await fetch(`${apiBase}/key/info`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        console.log(chalk.red(`API request failed: ${res.status} ${res.statusText}`));
-        process.exit(1);
-      }
-      baselineData = await res.json();
-    } catch (err: any) {
-      console.log(chalk.red(`Network error: ${err.message}`));
-      process.exit(1);
-    }
-    const info = baselineData.info ?? baselineData;
-    const baselineSpend = Math.round(Number(info.spend ?? 0) * 100) / 100;
-    const today = new Date().toISOString().slice(0, 10);
-    store.providers[configName].dailyBaseline = { date: today, spend: baselineSpend };
-    await writeStore(store);
-    console.log(
-      `\n  ${chalk.green("✓")} Baseline recorded: ${chalk.yellow(`$${baselineSpend.toFixed(2)}`)} as of ${chalk.cyan(today)} for config ${chalk.cyan(configName)}\n`,
-    );
-    return;
-  }
 
   const spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   let spinIdx = 0;
@@ -121,7 +88,24 @@ async function usageCommand(
   const today = new Date().toISOString().slice(0, 10);
   const activeProvider = configName ? store.providers[configName] : undefined;
   const baseline = activeProvider?.dailyBaseline;
-  const todaySpend = baseline?.date === today ? spent - baseline.spend : undefined;
+
+  let todaySpend: number | undefined;
+  let isFirstBaseline = false;
+
+  if (configName && store.providers[configName]) {
+    if (baseline?.date === today) {
+      todaySpend = spent - baseline.spend;
+    } else {
+      const roundedSpend = Math.round(spent * 100) / 100;
+      store.providers[configName].dailyBaseline = { date: today, spend: roundedSpend };
+      if (!activeProvider?.baselineStartDate) {
+        store.providers[configName].baselineStartDate = today;
+      }
+      await writeStore(store);
+      todaySpend = 0;
+    }
+    isFirstBaseline = store.providers[configName].baselineStartDate === today;
+  }
 
   const budgetStr =
     maxBudget != null ? `$${Number(maxBudget).toFixed(2)}` : "Unlimited";
@@ -140,7 +124,12 @@ async function usageCommand(
   console.log(`  Alias:      ${chalk.cyan(alias)}`);
   console.log(`  Spent:      ${chalk.yellow(`$${spent.toFixed(2)}`)}`);
   if (todaySpend !== undefined) {
-    console.log(`  Today:      ${chalk.yellow(`$${todaySpend.toFixed(4)}`)}`);
+    const todayLine = `  Today:      ${chalk.yellow(`$${todaySpend.toFixed(2)}`)}`;
+    if (isFirstBaseline) {
+      console.log(todayLine + chalk.dim("  (first day — prior spend excluded)"));
+    } else {
+      console.log(todayLine);
+    }
   }
   console.log(`  Budget:     ${chalk.green(budgetStr)}`);
   console.log(`  Remaining:  ${chalk.green(remainingStr)}`);
