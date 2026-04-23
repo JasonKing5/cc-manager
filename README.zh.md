@@ -4,6 +4,8 @@
 
 **支持的 Provider：** AWS Bedrock · Google Vertex AI · LiteLLM · DeepSeek · OpenRouter · Kimi · 智谱 · Ollama · 通义千问 · SiliconFlow · Azure AI Foundry
 
+同时支持管理 **OpenAI Codex** 配置（`~/.codex/auth.json` + `~/.codex/config.toml`）。
+
 ## 安装
 
 ```bash
@@ -72,6 +74,18 @@ ccm status       # 查看当前激活配置
 | `ccm import <文件>` | 从 JSON 导入配置，冲突时交互处理 |
 | `ccm snapshot [名称]` | 将当前 `settings.json` 状态保存为配置 |
 
+### Codex 管理
+
+管理 OpenAI Codex 配置（写入 `~/.codex/auth.json` 和 `~/.codex/config.toml`）。
+
+| 命令 | 说明 |
+|------|------|
+| `ccm codex add` | 新建 Codex 配置（填入中转地址和 API Key） |
+| `ccm codex list` | 列出所有 Codex 配置 |
+| `ccm codex use [名称]` | 激活配置，写入 `~/.codex` 文件 |
+| `ccm codex edit [名称]` | 修改名称、中转地址或 API Key |
+| `ccm codex remove [名称]` | 删除已保存的配置 |
+
 ### Shell 补全
 
 ```bash
@@ -97,10 +111,12 @@ PS1='$(ccm status --short) $ '
 
 ## 工作原理
 
-ccm 管理两个文件：
+ccm 管理以下文件：
 
-- **`~/.claude/ccm.json`** — 存储所有命名配置（环境变量、模型列表、当前激活、上一个激活）
+- **`~/.ccm/claude.json`** — 所有 Claude Code 命名配置（环境变量、模型列表、当前激活、上一个激活）；首次运行时自动从 `~/.claude/ccm.json` 迁移
+- **`~/.ccm/codex.json`** — 所有 Codex 命名配置（中转地址、API Key、当前激活）
 - **`~/.claude/settings.json`** — claude-code 的配置文件；ccm 只修改其中的 `env` 字段，其他内容保持不变，每次写入前自动备份为 `settings.json.bak`
+- **`~/.codex/auth.json`** + **`~/.codex/config.toml`** — 由 `ccm codex use` 写入；仅修改 `base_url` 和 `OPENAI_API_KEY`，其余配置原样保留
 
 ## License
 

@@ -4,6 +4,8 @@ A CLI tool to manage multiple provider configurations for [claude code](https://
 
 **Supported providers:** AWS Bedrock · Google Vertex AI · LiteLLM · DeepSeek · OpenRouter · Kimi · Zhipu · Ollama · Qwen · SiliconFlow · Azure AI Foundry
 
+Also manages **OpenAI Codex** configurations (`~/.codex/auth.json` + `~/.codex/config.toml`).
+
 ## Install
 
 ```bash
@@ -72,6 +74,18 @@ ccm status       # show what's active
 | `ccm import <file>` | Import configs; handles name conflicts interactively |
 | `ccm snapshot [name]` | Save current `settings.json` state as a config |
 
+### Codex
+
+Manage OpenAI Codex configurations (writes to `~/.codex/auth.json` and `~/.codex/config.toml`).
+
+| Command | Description |
+|---------|-------------|
+| `ccm codex add` | Add a new Codex config (base URL + API key) |
+| `ccm codex list` | List all Codex configs |
+| `ccm codex use [name]` | Activate a config — writes to `~/.codex` files |
+| `ccm codex edit [name]` | Edit name, base URL, or API key |
+| `ccm codex remove [name]` | Remove a saved config |
+
 ### Shell
 
 ```bash
@@ -98,10 +112,12 @@ PS1='$(ccm status --short) $ '
 
 ## How It Works
 
-ccm manages two files:
+ccm manages these files:
 
-- **`~/.claude/ccm.json`** — all named configs (env vars, model list, active, previous)
+- **`~/.ccm/claude.json`** — all named Claude Code configs (env vars, model list, active, previous); migrated automatically from `~/.claude/ccm.json` on first run
+- **`~/.ccm/codex.json`** — all named Codex configs (base URL, API key, active)
 - **`~/.claude/settings.json`** — read by claude-code; ccm only touches the `env` key, preserves everything else, and auto-backs up to `settings.json.bak` before every write
+- **`~/.codex/auth.json`** + **`~/.codex/config.toml`** — written by `ccm codex use`; only `base_url` and `OPENAI_API_KEY` are changed, all other settings are preserved
 
 ## License
 

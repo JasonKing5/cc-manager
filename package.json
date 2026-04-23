@@ -1,6 +1,6 @@
 {
   "name": "@codefe/cc-manager",
-  "version": "0.5.10",
+  "version": "0.6.0",
   "description": "CLI tool to manage multiple provider configurations for claude-code",
   "type": "module",
   "license": "MIT",
@@ -15,7 +15,6 @@
   },
   "keywords": [
     "claude-code",
-    "bedrock",
     "litellm",
     "cli",
     "anthropic",

@@ -1,11 +1,12 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, copyFile, mkdir, access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readSettings, writeSettings } from "./settings.js";
 import { PROVIDER_TEMPLATES } from "./providers.js";
 
-const STORE_DIR = join(homedir(), ".claude");
-const STORE_PATH = join(STORE_DIR, "ccm.json");
+const STORE_DIR = join(homedir(), ".ccm");
+const STORE_PATH = join(STORE_DIR, "claude.json");
+const LEGACY_STORE_PATH = join(homedir(), ".claude", "ccm.json");
 
 export interface DailyBaseline {
   date: string;   // "YYYY-MM-DD"
@@ -39,6 +40,19 @@ function defaultStore(): CcmStore {
 }
 
 export async function readStore(): Promise<CcmStore> {
+  // One-time migration: copy legacy ~/.claude/ccm.json → ~/.ccm/claude.json
+  try {
+    await access(STORE_PATH);
+  } catch {
+    try {
+      await access(LEGACY_STORE_PATH);
+      await mkdir(STORE_DIR, { recursive: true });
+      await copyFile(LEGACY_STORE_PATH, STORE_PATH);
+    } catch {
+      // Neither exists — that's fine, fresh start
+    }
+  }
+
   try {
     const raw = await readFile(STORE_PATH, "utf-8");
     const parsed = JSON.parse(raw);
