@@ -48,13 +48,16 @@ export async function readCodexBaseUrl(): Promise<string | undefined> {
 }
 
 /**
- * Update base_url in ~/.codex/config.toml.
- * Replaces the base_url line within any [model_providers.*] section.
- * If the section/key doesn't exist, appends an [model_providers.OpenAI] section.
+ * Update base_url in ~/.codex/config.toml using a line-by-line approach.
+ * - Strips all [projects.*] sections
+ * - Replaces existing base_url if found inside any [model_providers.*] section
+ * - Inserts base_url if the section exists but the key is missing
+ * - Appends a new [model_providers.OpenAI] section if none exists
+ * Never produces duplicate keys.
  */
 export async function writeCodexConfigWithBaseUrl(baseUrl: string): Promise<void> {
   await mkdir(CODEX_DIR, { recursive: true });
-  let content = await readCodexConfigRaw();
+  const raw = await readCodexConfigRaw();
 
   try {
     await copyFile(CONFIG_PATH, CONFIG_PATH + ".bak");
@@ -62,35 +65,57 @@ export async function writeCodexConfigWithBaseUrl(baseUrl: string): Promise<void
     // No existing file to back up — that's fine
   }
 
-  // Strip all [projects.*] sections (each spans until the next section or EOF)
-  content = content.replace(/\[projects\.[^\]]+\][^[]*/gs, "").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+  // Strip all [projects.*] sections, then normalize blank lines
+  const stripped = raw
+    .replace(/\[projects\.[^\]]+\][^[]*/gs, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
 
-  // Replace base_url inside any [model_providers.*] section
-  const updated = content.replace(
-    /(\[model_providers\.[^\]]+\][^[]*?base_url\s*=\s*)"[^"]*"/s,
-    `$1"${baseUrl}"`,
-  );
+  const lines = stripped.split("\n");
+  const result: string[] = [];
+  let inModelProviders = false;
+  let foundModelProviders = false;
+  let baseUrlWritten = false;
 
-  if (updated !== content) {
-    await writeFile(CONFIG_PATH, updated);
-    return;
+  for (const line of lines) {
+    if (/^\[model_providers\./.test(line)) {
+      inModelProviders = true;
+      foundModelProviders = true;
+      result.push(line);
+      continue;
+    }
+
+    if (/^\[/.test(line)) {
+      // Leaving model_providers section — inject base_url before next section if not yet written
+      if (inModelProviders && !baseUrlWritten) {
+        result.push(`base_url = "${baseUrl}"`);
+        baseUrlWritten = true;
+      }
+      inModelProviders = false;
+      result.push(line);
+      continue;
+    }
+
+    if (inModelProviders && /^base_url\s*=/.test(line)) {
+      // Replace existing base_url line
+      result.push(`base_url = "${baseUrl}"`);
+      baseUrlWritten = true;
+      continue;
+    }
+
+    result.push(line);
   }
 
-  // Section exists but no base_url key — inject it
-  const injected = content.replace(
-    /(\[model_providers\.[^\]]+\])/,
-    `$1\nbase_url = "${baseUrl}"`,
-  );
-
-  if (injected !== content) {
-    await writeFile(CONFIG_PATH, injected);
-    return;
+  // model_providers section was at end of file and base_url not yet written
+  if (inModelProviders && !baseUrlWritten) {
+    result.push(`base_url = "${baseUrl}"`);
+    baseUrlWritten = true;
   }
 
   // No model_providers section at all — append one
-  const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-  await writeFile(
-    CONFIG_PATH,
-    content + separator + `\n[model_providers.OpenAI]\nbase_url = "${baseUrl}"\n`,
-  );
+  if (!foundModelProviders) {
+    result.push("", "[model_providers.OpenAI]", `base_url = "${baseUrl}"`);
+  }
+
+  await writeFile(CONFIG_PATH, result.join("\n") + "\n");
 }
