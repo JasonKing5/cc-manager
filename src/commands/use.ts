@@ -50,8 +50,11 @@ export async function useCommand(
     process.exit(1);
   }
 
-  // Apply to settings.json (clears stale keys first)
-  await applyToSettings(store.providers[target].env);
+  // Resolve outgoing provider's env for precise cleanup
+  const previousEnv = store.active ? store.providers[store.active]?.env : undefined;
+
+  // Apply to settings.json (clears outgoing provider keys first)
+  await applyToSettings(store.providers[target].env, previousEnv);
 
   // Track previous active config
   if (store.active && store.active !== target) {

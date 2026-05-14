@@ -83,16 +83,19 @@ export async function writeStore(store: CcmStore): Promise<void> {
 
 /**
  * Apply a provider's env to settings.json.
- * Clears all ccm-managed keys first, then merges the provider's env.
+ * When previousEnv is given, removes exactly those keys (outgoing provider's keys).
+ * Falls back to clearing all CCM_ENV_KEYS when there is no previous provider.
  */
 export async function applyToSettings(
   providerEnv: Record<string, string>,
+  previousEnv?: Record<string, string>,
 ): Promise<void> {
   const settings = await readSettings();
   const env = { ...settings.env };
 
-  // Clear all ccm-managed keys
-  for (const key of CCM_ENV_KEYS) {
+  // Clear outgoing provider's keys precisely; fall back to full CCM_ENV_KEYS list
+  const keysToDelete = previousEnv ? Object.keys(previousEnv) : CCM_ENV_KEYS;
+  for (const key of keysToDelete) {
     delete env[key];
   }
 
